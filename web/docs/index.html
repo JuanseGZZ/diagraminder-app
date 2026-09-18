@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentación — DiagraMinder</title>
+<meta name="description" content="Cómo se usa DiagraMinder: carpetas y proyectos, los modos (cart, freestyle, actividades, object, editor, orquestador, documentos), la IA, el software local y los conectores.">
+<link rel="icon" href="/brand/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="/"><img src="/brand/logo.svg" alt=""><b>DiagraMinder</b><span id="top-docs">Documentación</span></a>
+  <button class="btn menu-btn" id="menu-btn" type="button" aria-label="Índice">☰</button>
+  <div class="top-sp"></div>
+  <select id="lang" aria-label="Language / Idioma">
+    <option value="es">Español</option>
+    <option value="en">English</option>
+  </select>
+  <a class="btn btn-primary" href="/" id="to-app">Abrir la app</a>
+</header>
+
+<div class="layout">
+  <!-- índice: se arma solo desde docs-content.js -->
+  <nav class="side" id="side">
+    <input type="search" id="q" placeholder="Buscar…" aria-label="Buscar">
+    <div id="index"></div>
+  </nav>
+  <main class="main">
+    <article class="doc" id="doc"></article>
+    <div class="navfoot" id="navfoot"></div>
+  </main>
+</div>
+
+<script src="/docs/docs-content.js"></script>
+<script src="/docs/docs-app.js"></script>
+</body>
+</html>

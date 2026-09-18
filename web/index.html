@@ -1,0 +1,1284 @@
+<head>
+  <meta charset="utf-8" />
+  <title>DiagraMinder</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- La app no tenía favicon (pestaña en blanco). Es el mismo logo de la marca:
+       fuente única en brand/logo.svg, de donde salen también los PNG. -->
+  <link rel="icon" href="/brand/logo.svg" type="image/svg+xml">
+  <!-- Descripción y Open Graph. NO son decorativos: la verificación de marca de
+       Google rebotó con "en la página principal no se explica el propósito de la
+       app" — el pitch está en el <body>, pero sin <meta description> el chequeo
+       automático no encuentra de qué se trata. Texto en inglés, igual que el hero
+       (es el idioma nativo de la UI; el español entra por t()). -->
+  <meta name="description" content="DiagraMinder builds tree diagrams, flows, object models and AI agent teams on a single local-first canvas. Versioned, reversible and private.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="DiagraMinder">
+  <meta property="og:title" content="DiagraMinder — Diagrams that do the work">
+  <meta property="og:description" content="Build trees, flows, object models — and AI agent teams — on one local-first canvas. Versioned, reversible, private.">
+  <meta property="og:url" content="https://diagraminder.com/">
+  <meta property="og:image" content="https://diagraminder.com/brand/logo-512.png">
+  <meta name="twitter:card" content="summary">
+  <!-- ?v= rompe el cache del borde cuando cambia el CSS. El nginx de infra/web ya
+       manda no-cache, pero una copia vieja YA cacheada sobrevive hasta su TTL: subir
+       este número la invalida al instante (index.html se sirve siempre fresco). -->
+  <link rel="stylesheet" href="app/bolzaDeEstilos/styles.css?v=56">
+</head>
+
+<body>
+  <header class="app-header">
+    <nav class="nav">
+      <a class="brand" href="#"><span class="brand-name">Diagra<span class="brand-accent">Minder</span></span></a>
+
+      <!-- Toggle mobile (CSS-only) -->
+      <input id="nav-open" class="nav-open" type="checkbox" hidden>
+      <label for="nav-open" class="nav-toggle" aria-label="Open menu" title="Menu"></label>
+
+      <ul class="nav-list">
+        <!-- Ubicación de trabajo: UN solo botón que abre el aside IZQUIERDO de
+             proyectos (#projects-aside, dos columnas: carpetas | archivos). Antes
+             acá vivían dos <details> (carpeta activa / proyecto activo) — se
+             reemplazaron porque el select anidado no daba para GESTIONAR
+             (crear/renombrar/borrar) sin que el menú se cerrara encima. -->
+        <li class="nav-item nav-projects">
+          <button type="button" class="nav-projects-btn" id="projects-btn"
+                  title="Projects" aria-controls="projects-aside" aria-expanded="false">Projects</button>
+        </li>
+        <li class="nav-loc-bar" aria-hidden="true"></li>
+
+        <li class="nav-item">
+          <button class="nav-home-btn" id="mode-home-btn" data-act="mode-home">Home</button>
+        </li>
+
+        <li class="nav-item nav-project">
+          <details id="file-menu">
+            <summary>File</summary>
+            <ul class="menu">
+              <li><button data-act="new" id="new-diagram">New</button></li>
+              <li><button data-act="open" id="open-diagram">Open…</button></li>
+              <li><button data-act="export-dmer" id="export-dmer">Save</button></li>
+              <!-- Solo visible si el documento abierto vive en una nube DiagraMinder
+                   y sos su dueño (lo decide connectors.js). -->
+              <!-- OCULTOS, no eliminados (2026-09-14): "Import Soft" espera la decisión
+                   de si se queda o no. Se esconde junto con SU separador — si no, el
+                   grupo entre los dos `sep` queda vacío fuera de un organigrama (donde
+                   "To canvas" tampoco se ve) y se leen dos líneas seguidas.
+                   Volver a mostrarlo = sacarle la clase `hidden` a estos dos <li>. -->
+              <li class="sep hidden" id="import-soft-sep"></li>
+              <li class="hidden" id="import-soft-li"><button data-act="import-soft" id="import-soft">Import Soft</button></li>
+              <!-- Solo en un organigrama (lo decide updateToolbarForType): crea una copia
+                   del árbol como lienzo libre. Antes vivía en el menú Move. -->
+              <li class="hidden" id="to-freestyle-li"><button data-act="to-freestyle" id="to-freestyle">To canvas</button></li>
+              <li class="sep"></li>
+              <li><button data-act="export-obsidian" id="export-obsidian">Export to Obsidian</button></li>
+              <li><button data-act="export-png" id="export-png">Export PNG</button></li>
+              <li><button data-act="export-pdf" id="export-pdf">Export PDF</button></li>
+              <li><button data-act="export-word" id="export-word">Export Word</button></li>
+            </ul>
+          </details>
+        </li>
+
+        <li class="nav-item nav-project">
+          <details>
+            <summary>Edit</summary>
+            <ul class="menu">
+              <li><button data-act="undo">Undo</button></li>
+              <li><button data-act="redo">Redo</button></li>
+            </ul>
+          </details>
+        </li>
+
+        <li class="nav-item nav-project">
+          <details>
+            <summary>View</summary>
+            <ul class="menu">
+              <li><button data-act="zoom-out">Zoom −</button></li>
+              <li><button data-act="zoom-in">Zoom +</button></li>
+              <li><button data-act="fit">Fit to screen</button></li>
+              <li class="sep"></li>
+              <li><button data-act="toggle-dots" id="toggle-dots">Hide dots</button></li>
+            </ul>
+          </details>
+        </li>
+
+
+
+        <li class="nav-spacer" aria-hidden="true"></li>
+
+        <!-- OCULTO, no eliminado (2026-09-14): el menú Skills espera la decisión de si
+             se queda o no. Volver a mostrarlo = sacarle la clase `hidden` a este <li>.
+             El paso del tutorial que lo señalaba se sacó a propósito (doc 33): si vuelve
+             el menú, el paso NO vuelve solo. -->
+        <li class="nav-item hidden" id="skills-menu-li">
+          <details id="skills-menu">
+            <summary>Skills</summary>
+            <ul class="menu">
+              <li><button data-act="download-soft-skill" id="download-soft-skill">Download Soft Skill</button></li>
+            </ul>
+          </details>
+        </li>
+        <li class="nav-item nav-lang">
+          <select id="lang-select" class="nav-lang-select" aria-label="Language" title="Language">
+            <option value="en">English</option>
+            <option value="es">Español</option>
+          </select>
+        </li>
+
+        <li class="nav-item">
+          <details id="help-menu">
+            <summary>Help</summary>
+            <ul class="menu">
+              <!-- se esconde en celular: ahí no corre ningún tutorial (doc 33) -->
+              <li class="help-tutorial-li"><button data-act="tutorial" id="help-tutorial">Tutorial</button></li>
+              <li><button data-act="shortcuts" disabled>Shortcuts</button></li>
+              <li><a class="menu-link" data-act="docs" href="/docs" target="_blank" rel="noopener">Documentation</a></li>
+              <li><button data-act="whatsnew" disabled>What's new</button></li>
+            </ul>
+          </details>
+        </li>
+
+        <li class="nav-actions">
+          <button id="chat-btn" class="nav-pill" title="Chat with the AI"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>AI</button>
+          <button id="ia-btn" class="nav-pill" title="Settings, connectors and appearance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5 15.4 17.5M15.4 6.5 8.6 10.5"/></svg>Settings</button>
+        </li>
+      </ul>
+      <button id="nav-collapse-btn" class="nav-collapse-btn" title="Hide top bar" aria-label="Hide top bar"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
+    </nav>
+  </header>
+  <!-- ▼ flotante para restaurar el navbar cuando está escondido -->
+  <button id="nav-restore-btn" class="nav-restore-btn" title="Show top bar" aria-label="Show top bar"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+
+  <aside id="tree-aside">
+    <div class="aside-header">
+      <span class="aside-title">Explorer</span>
+      <button id="aside-toggle" class="aside-toggle" title="Hide / show panel">◀</button>
+    </div>
+    <div class="aside-search-wrap">
+      <input id="aside-search" type="search" placeholder="Search…" aria-label="Search explorer" />
+    </div>
+    <div id="aside-tree" class="aside-tree"></div>
+    <div id="aside-resizer" class="aside-resizer" title="Drag to resize width"></div>
+  </aside>
+
+  <!-- ===== PROYECTOS (aside IZQUIERDO) =====
+       Reemplaza a los dos selects del navbar. Dos columnas: CARPETAS y FILES (lo
+       que antes se llamaba "proyectos"). Elegir una carpeta NO abre nada: solo la
+       marca y repuebla la columna de files. Abrir un file sí cambia el diagrama.
+       Los ids #folder-list / #tree-list se conservan a propósito: los handlers y
+       el repintado (refreshFolderMenu / refreshTreeMenu) siguen apuntando ahí. -->
+  <aside id="projects-aside" class="side-panel side-panel-left">
+    <div class="side-panel-header">
+      <span class="side-panel-title">Projects</span>
+      <button class="side-panel-close" data-close="projects-aside" title="Close">✕</button>
+    </div>
+    <div class="projects-cols">
+      <section class="projects-col" id="projects-col-folders">
+        <p class="projects-col-title">Folders</p>
+        <ul class="menu projects-list" id="folder-list"></ul>
+        <div class="projects-col-foot">
+          <button type="button" class="projects-foot-btn folder-add">＋ Add folder</button>
+          <button type="button" class="projects-foot-btn folder-reveal">Open root folder</button>
+        </div>
+      </section>
+      <section class="projects-col" id="projects-col-files">
+        <p class="projects-col-title">Files</p>
+        <ul class="menu projects-list" id="tree-list"></ul>
+        <div class="projects-col-foot">
+          <div class="projects-add-wrap" id="file-add-wrap">
+            <!-- el desplegable de tipos se puebla en refreshTreeMenu() -->
+            <ul class="projects-add-menu hidden" id="file-add-types"></ul>
+            <button type="button" class="projects-foot-btn projects-add-btn" id="file-add-btn">＋ Add file</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </aside>
+
+  <aside id="ia-aside" class="side-panel side-panel-right">
+    <div class="side-panel-header">
+      <span class="side-panel-title">Settings</span>
+      <button class="side-panel-close" data-close="ia-aside" title="Close">✕</button>
+    </div>
+    <div class="side-panel-body">
+      <section class="side-panel-group">
+        <p class="side-panel-group-title">Local software</p>
+        <button class="side-panel-btn dm-web-only" id="ia-download-local">Download local</button>
+      <div class="ia-download hidden dm-web-only" id="ia-download-options">
+
+        <div class="ia-dl-group">
+          <p class="ia-dl-title">The whole app <span class="ia-dl-badge">recommended</span></p>
+          <p class="ia-download-hint">DiagraMinder and its backend in a single file: open it and it works, fully offline. This is the one you want.</p>
+          <a class="ia-download-link" id="ia-app-win" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/DiagraMinder-win.exe" download>
+            ⬇ Windows<span class="ia-download-tag">64-bit</span>
+          </a>
+          <a class="ia-download-link" id="ia-app-mac" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/DiagraMinder-mac" download>
+            ⬇ macOS<span class="ia-download-tag">Apple Silicon</span>
+          </a>
+          <a class="ia-download-link" id="ia-app-linux" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/DiagraMinder-linux" download>
+            ⬇ Linux<span class="ia-download-tag">64-bit</span>
+          </a>
+        </div>
+
+        <div class="ia-dl-group">
+          <p class="ia-dl-title">Backend only</p>
+          <p class="ia-download-hint">Just the backend, to use with this website instead of the packaged app.</p>
+          <a class="ia-download-link" id="ia-bin-win" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/DiagraMind-Local-win.exe" download>
+            ⬇ Windows<span class="ia-download-tag">64-bit</span>
+          </a>
+          <a class="ia-download-link" id="ia-bin-mac" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/DiagraMind-Local-mac" download>
+            ⬇ macOS<span class="ia-download-tag">Apple Silicon</span>
+          </a>
+          <a class="ia-download-link" id="ia-bin-linux" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/DiagraMind-Local-linux" download>
+            ⬇ Linux<span class="ia-download-tag">64-bit</span>
+          </a>
+        </div>
+
+        <div class="ia-dl-group">
+          <p class="ia-dl-title">Installer</p>
+          <p class="ia-download-hint">Installs the executable and sets it to start automatically on boot.</p>
+          <a class="ia-download-link" id="ia-installer-win" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/Instalar-DiagraMind-win.bat" download>
+            ⬇ Windows<span class="ia-download-tag"></span>
+          </a>
+          <a class="ia-download-link" id="ia-installer-mac" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/Instalar-DiagraMind-mac.command" download>
+            ⬇ macOS<span class="ia-download-tag"></span>
+          </a>
+          <a class="ia-download-link" id="ia-installer-linux" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/Instalar-DiagraMind-linux.sh" download>
+            ⬇ Linux<span class="ia-download-tag"></span>
+          </a>
+        </div>
+
+        <div class="ia-dl-group">
+          <p class="ia-dl-title">Python Script</p>
+          <p class="ia-download-hint">Lightweight, but requires Python 3 installed.</p>
+          <a class="ia-download-link" id="ia-download-zip" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/diagramind-local.zip" download>
+            ⬇ Download .zip<span class="ia-download-tag">requires Python</span>
+          </a>
+        </div>
+
+        <a class="ia-dl-repo" href="https://github.com/JuanseGZZ/diagraminder-backend" target="_blank" rel="noopener">
+          ↗ View the code on GitHub
+        </a>
+      </div>
+
+
+      </section>
+
+      <section class="side-panel-group">
+        <p class="side-panel-group-title">Connections</p>
+        <button class="side-panel-btn" id="ia-manage-apis">Add API</button>
+      <div class="ia-apis hidden" id="ia-apis-panel">
+        <ul class="ia-apis-list" id="ia-apis-list"></ul>
+        <form class="ia-apis-form" id="ia-apis-form">
+          <input class="ia-apis-input" id="ia-api-name" type="text" placeholder="Name (e.g. My Anthropic key)" required />
+          <select class="ia-apis-input" id="ia-api-provider">
+            <option value="anthropic">Anthropic (Claude)</option>
+            <option value="openai">OpenAI (GPT)</option>
+            <option value="google">Google (Gemini)</option>
+            <option value="other">Other</option>
+          </select>
+          <input class="ia-apis-input" id="ia-api-key" type="password" placeholder="API key" autocomplete="off" required />
+          <input class="ia-apis-input ia-apis-other-only hidden" id="ia-api-url" type="text" placeholder="Endpoint URL (OpenAI-compatible)" autocomplete="off" />
+          <input class="ia-apis-input ia-apis-other-only hidden" id="ia-api-model" type="text" placeholder="Model (e.g. gpt-4o-mini, llama-3.1…)" autocomplete="off" />
+          <button class="ia-apis-add" type="submit">Add API</button>
+        </form>
+      </div>
+
+      <!-- Dónde guarda TODO el backend local (su raíz en disco). Solo tiene
+           sentido con el backend conectado: sin él no hay nada que mover. -->
+      <div class="side-panel-row" id="local-root-row">
+        <span class="side-panel-row-label">Storage folder</span>
+        <span class="side-panel-row-value" id="local-root-path">—</span>
+      </div>
+      <button class="side-panel-btn" id="local-root-change">Change storage folder</button>
+
+      </section>
+
+      <section class="side-panel-group">
+        <p class="side-panel-group-title">Voice</p>
+        <div class="side-panel-row">
+          <span class="side-panel-row-label">Speech engine</span>
+          <select class="voice-select" id="voice-engine">
+            <option value="auto">Automatic</option>
+            <option value="webspeech">Browser (free)</option>
+            <option value="cloud">Cloud (API key)</option>
+          </select>
+        </div>
+        <div class="side-panel-row voice-cloud-only hidden">
+          <span class="side-panel-row-label">Transcription key</span>
+          <select class="voice-select" id="voice-api"></select>
+        </div>
+        <div class="side-panel-row voice-cloud-only hidden">
+          <span class="side-panel-row-label">Transcription model</span>
+          <input class="voice-input" id="voice-model" type="text" placeholder="Provider default" autocomplete="off" />
+        </div>
+        <div class="side-panel-row">
+          <span class="side-panel-row-label">Language</span>
+          <select class="voice-select" id="voice-lang">
+            <option value="auto">Same as the app</option>
+            <option value="es-ES">Spanish (Spain)</option>
+            <option value="es-419">Spanish (Latin America)</option>
+            <option value="en-US">English (US)</option>
+            <option value="en-GB">English (UK)</option>
+            <option value="pt-BR">Portuguese (Brazil)</option>
+            <option value="fr-FR">French</option>
+            <option value="it-IT">Italian</option>
+            <option value="de-DE">German</option>
+          </select>
+        </div>
+        <div class="side-panel-row">
+          <span class="side-panel-row-label">Pause that ends a sentence</span>
+          <select class="voice-select" id="voice-silence">
+            <option value="600">Short (0.6s)</option>
+            <option value="900">Normal (0.9s)</option>
+            <option value="1400">Long (1.4s)</option>
+            <option value="2000">Very long (2s)</option>
+          </select>
+        </div>
+        <label class="side-panel-check">
+          <input type="checkbox" id="voice-commands" />
+          <span>Punctuation commands while dictating ("period", "comma", "new line")</span>
+        </label>
+        <label class="side-panel-check">
+          <input type="checkbox" id="voice-bargein" />
+          <span>Talking over the AI interrupts it during a call</span>
+        </label>
+        <p class="voice-hint" id="voice-hint"></p>
+      </section>
+
+      <section class="side-panel-group">
+        <p class="side-panel-group-title">Appearance</p>
+        <div class="side-panel-row">
+          <span class="side-panel-row-label">Theme</span>
+          <button id="theme-toggle" title="Toggle theme">☀</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- footer pinneado al fondo: conectar local + estado de conexión, con línea separadora -->
+    <div class="side-panel-footer">
+      <p class="side-panel-group-title">Local connection</p>
+      <button class="side-panel-btn dm-web-only" id="ia-connect-local">Connect local</button>
+      <div class="ia-status" id="ia-status" data-state="disconnected">
+        <span class="ia-status-dot"></span>
+        <span class="ia-status-text">Disconnected</span>
+      </div>
+    </div>
+  </aside>
+
+
+  <!-- ===== CHAT IA ===== -->
+  <section id="ia-chat" class="ia-chat" aria-hidden="true">
+    <div class="ia-chat-resizer" id="ia-chat-resizer" title="Drag to resize width"></div>
+
+    <header class="ia-chat-header">
+      <div class="ia-chat-project ia-chat-pop" id="ia-chat-project" title="File the chat works on">
+        <button class="ia-chat-project-btn" id="ia-chat-project-btn">
+          <span class="ia-chat-project-dot"></span>
+          <span class="ia-chat-project-name" id="ia-chat-project-name">No file</span>
+          <svg class="ia-chat-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <ul class="ia-chat-menu hidden" id="ia-chat-project-menu"></ul>
+      </div>
+      <div class="ia-chat-header-actions">
+        <button class="ia-chat-icon-btn" id="ia-chat-history" title="Session history" aria-label="History">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        </button>
+        <button class="ia-chat-icon-btn" id="ia-chat-new" title="New chat" aria-label="New chat">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <button class="ia-chat-icon-btn" id="ia-chat-close" title="Close chat" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- barra de backend (arriba): conector local o una API agregada -->
+    <div class="ia-chat-backend-bar">
+      <div class="ia-chat-pop ia-chat-pop-block" id="ia-chat-backend">
+        <button class="ia-chat-backend-btn" id="ia-chat-backend-btn">
+          <span class="ia-chat-backend-id">
+            <!-- vacíos a propósito: los llena syncControls() de iaChat.js. Con texto
+                 adentro el i18n los fotografía y al cambiar de idioma los pisaría con
+                 el literal de arranque (misma trampa que el pill de la cuenta, §27). -->
+            <span class="ia-chat-backend-avatar" id="ia-chat-backend-avatar" aria-hidden="true"></span>
+            <span class="ia-chat-backend-label" id="ia-chat-backend-label"></span>
+          </span>
+          <svg class="ia-chat-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <ul class="ia-chat-menu hidden" id="ia-chat-backend-menu"></ul>
+      </div>
+    </div>
+
+    <!-- drawer de historial de sesiones -->
+    <aside class="ia-chat-sessions hidden" id="ia-chat-sessions">
+      <div class="ia-chat-sessions-head">
+        <span class="ia-chat-sessions-title">History</span>
+        <button class="ia-chat-icon-btn" id="ia-chat-sessions-close" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <ul class="ia-chat-sessions-list" id="ia-chat-sessions-list"></ul>
+    </aside>
+
+    <div class="ia-chat-messages" id="ia-chat-messages">
+      <!-- Velo de BLOQUEO: sin backend local ni API key el chat no puede hacer nada, así
+           que se apaga y explica qué falta. Los textos van acá (no armados por JS) para
+           que los traduzca el snapshot del i18n. Lo muestra/esconde syncLock(). -->
+      <div class="ia-chat-lock hidden" id="ia-chat-lock">
+        <div class="ia-chat-lock-box">
+          <svg class="ia-chat-lock-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+          <p class="ia-chat-lock-title">The chat is off</p>
+          <p class="ia-chat-lock-sub">It needs an AI to talk to: connect the local software, or add an API key.</p>
+          <div class="ia-chat-lock-actions">
+            <button class="ia-chat-lock-btn is-primary" id="ia-chat-lock-connect" type="button">Connect to local</button>
+            <button class="ia-chat-lock-btn" id="ia-chat-lock-api" type="button">Add API key</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ia-chat-activity hidden" id="ia-chat-activity" aria-live="polite">
+      <span class="ia-chat-activity-spin" aria-hidden="true"></span>
+      <span class="ia-chat-activity-text" id="ia-chat-activity-text">Thinking…</span>
+      <span class="ia-chat-activity-time" id="ia-chat-activity-time"></span>
+      <button class="ia-chat-activity-stop" id="ia-chat-activity-stop" title="Stop">Stop</button>
+    </div>
+
+    <div class="ia-chat-composer">
+      <!-- adjuntos pendientes (chips con scroll horizontal) -->
+      <div class="ia-chat-attachments hidden" id="ia-chat-attachments" aria-label="Attachments"></div>
+      <div class="ia-chat-input-wrap">
+        <textarea id="ia-chat-input" class="ia-chat-input" rows="1"
+          placeholder="Type a message…" aria-label="Message for the AI"></textarea>
+        <button class="ia-chat-send" id="ia-chat-send" title="Send (Enter)" aria-label="Send">
+          <svg class="ia-chat-send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          <svg class="ia-chat-stop-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
+        </button>
+      </div>
+      <div class="ia-chat-controls">
+        <!-- adjuntar archivos (selección múltiple, cualquier tipo) -->
+        <button class="ia-chat-attach-btn" id="ia-chat-attach" title="Attach files" aria-label="Attach files">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l8.49-8.49a3 3 0 0 1 4.24 4.24l-8.49 8.49a1 1 0 0 1-1.41-1.41l7.78-7.78"/></svg>
+        </button>
+        <input type="file" id="ia-chat-file-input" multiple hidden aria-hidden="true" />
+        <!-- dictado: escribir el mensaje hablando (app/voice/dictation.js) -->
+        <button class="ia-chat-attach-btn ia-chat-mic-btn" id="ia-chat-mic" title="Dictate the message" aria-label="Dictate the message" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        </button>
+        <!-- modo llamada: conversar hablando (app/voice/callMode.js) -->
+        <button class="ia-chat-attach-btn ia-chat-call-btn" id="ia-chat-call" title="Voice call with the AI" aria-label="Voice call with the AI">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.6 3.5l2.2 4-1.8 1.8a12 12 0 0 0 5.7 5.7l1.8-1.8 4 2.2v3.3a2 2 0 0 1-2.2 2A17 17 0 0 1 3.3 5.7 2 2 0 0 1 5.3 3.5z"/></svg>
+        </button>
+        <!-- comandos "/" (se abre también tipeando "/" al principio del mensaje) -->
+        <div class="ia-chat-pop ia-chat-pop-up" id="ia-chat-slash">
+          <button class="ia-chat-attach-btn ia-chat-slash-btn" id="ia-chat-slash-btn" title="Commands" aria-label="Commands">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4L9 20" stroke-width="2.6"/></svg>
+          </button>
+          <div class="ia-chat-menu ia-chat-menu-slash hidden" id="ia-chat-slash-menu"></div>
+        </div>
+        <!-- modo (popup tipo VSCode) -->
+        <div class="ia-chat-pop ia-chat-pop-up" id="ia-chat-mode">
+          <button class="ia-chat-ctl-btn" id="ia-chat-mode-btn">
+            <span class="ia-chat-ctl-label" id="ia-chat-mode-label">Edit automatically</span>
+            <svg class="ia-chat-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="ia-chat-menu ia-chat-menu-modes hidden" id="ia-chat-mode-menu">
+            <button class="ia-chat-mode-opt" data-mode="auto-edit">
+              <span class="ia-chat-mode-opt-text">
+                <span class="ia-chat-mode-opt-title">Edit automatically</span>
+                <span class="ia-chat-mode-opt-desc">Edits the selected text or file</span>
+              </span>
+              <svg class="ia-chat-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
+            </button>
+            <button class="ia-chat-mode-opt" data-mode="plan">
+              <span class="ia-chat-mode-opt-text">
+                <span class="ia-chat-mode-opt-title">Plan mode</span>
+                <span class="ia-chat-mode-opt-desc">Explores and proposes a plan before editing</span>
+              </span>
+              <svg class="ia-chat-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="ia-chat-controls-right">
+          <!-- modelo (popup) -->
+          <div class="ia-chat-pop ia-chat-pop-up" id="ia-chat-model">
+            <button class="ia-chat-ctl-btn" id="ia-chat-model-btn">
+              <span class="ia-chat-ctl-label" id="ia-chat-model-label">Sonnet 5</span>
+              <svg class="ia-chat-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <ul class="ia-chat-menu hidden" id="ia-chat-model-menu"></ul>
+          </div>
+          <!-- esfuerzo (popup) — visible solo si el modelo lo soporta -->
+          <div class="ia-chat-pop ia-chat-pop-up hidden" id="ia-chat-effort">
+            <button class="ia-chat-ctl-btn" id="ia-chat-effort-btn" title="Effort / reasoning">
+              <span class="ia-chat-ctl-label" id="ia-chat-effort-label">high</span>
+              <svg class="ia-chat-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <ul class="ia-chat-menu hidden" id="ia-chat-effort-menu"></ul>
+          </div>
+          <!-- contador de caracteres del borrador (se enciende al acercarse al límite) -->
+          <span class="ia-chat-count" id="ia-chat-count" aria-hidden="true"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- overlay de drag & drop: aparece al arrastrar archivos sobre el chat -->
+    <div class="ia-chat-drop hidden" id="ia-chat-drop" aria-hidden="true">
+      <div class="ia-chat-drop-inner">
+        <svg class="ia-chat-drop-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M5 16v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3"/></svg>
+        <span class="ia-chat-drop-text">Drop the files to attach them</span>
+      </div>
+    </div>
+  </section>
+
+  <div id="toolbar" class="toolbar">
+    <button id="agregarPrincipalBtn">Add to root</button>
+    <div class="toolbar-sep"></div>
+    <button id="versiones-btn" class="toolbar-btn" title="Tree version history"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Versions</button>
+    <button id="orch-runs-btn" class="toolbar-btn hidden" title="Run history of this orchestrator"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>Runs</button>
+    <button id="orch-keys-btn" class="toolbar-btn hidden" title="API keys of this orchestrator (stored in its connector, never in the diagram)"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.59 17.41A2 2 0 0 0 2 18.83V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 1 1-1v-1a1 1 0 0 1 1-1h.17a2 2 0 0 0 1.42-.59l.81-.81a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>Keys</button>
+    <!-- presets de empresa/sector: el trigger es un .toolbar-btn como sus vecinos y
+         las filas del menú las arma el JS desde orchPresets.js -->
+    <details id="orch-preset-menu" class="toolbar-menu hidden">
+      <summary class="toolbar-btn" title="Insert a ready-made company or sector"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M6 21V6a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v15"/><path d="M14 10h4a1 1 0 0 1 1 1v10"/><path d="M9 9h2M9 13h2M9 17h2"/></svg>Insert preset</summary>
+      <ul id="orch-preset-list" class="menu orch-preset-list"></ul>
+    </details>
+
+    <!-- controles del modo OBJECT: el entorno activo (variables {{}} del fetch) y el
+         import de un JSON. Se muestran/esconden en updateToolbarForType(). -->
+    <div id="obj-toolbar-controls" class="hidden obj-toolbar-controls">
+      <div class="toolbar-sep"></div>
+      <select id="obj-env-select" class="act-unit-select" title="Environment used by the fetches"></select>
+      <button id="obj-env-btn" class="toolbar-btn" title="Environments and variables ({{name}})"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>Env…</button>
+      <div class="toolbar-sep"></div>
+      <button id="obj-import-btn" class="toolbar-btn" title="Build the diagram from a JSON body you already have"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>Import JSON</button>
+    </div>
+
+    <div id="act-toolbar-controls" class="hidden act-toolbar-controls">
+      <span class="tcg-label">Time unit</span>
+      <select id="act-unit-select" class="act-unit-select">
+        <option value="horas">Hours</option>
+        <option value="dias">Days</option>
+        <option value="semanas">Weeks</option>
+        <option value="años">Years</option>
+      </select>
+      <div class="toolbar-sep"></div>
+      <button id="act-levels-btn" class="toolbar-btn" title="Show/hide level divisions"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18"/></svg>Levels</button>
+      <div class="toolbar-sep"></div>
+      <button id="act-critical-btn" class="toolbar-btn" title="Highlight the critical path"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>Critical path</button>
+      <div class="toolbar-sep"></div>
+      <button id="act-gantt-btn" class="toolbar-btn" title="Toggle arrows / Gantt view"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 16v-5M12 16V8M17 16v-3"/></svg>Gantt view</button>
+    </div>
+
+    <div id="org-toolbar-controls" class="hidden org-toolbar-controls">
+      <button id="org-options-btn" class="toolbar-btn">Options ›</button>
+      <div id="org-options-panel" class="free-options-panel free-options-panel--collapsed">
+        <div class="toolbar-sep"></div>
+        <!-- color de las líneas del organigrama -->
+        <div class="toolbar-color-group" title="Lines colors">
+          <span class="tcg-label">Lines</span>
+          <button id="org-lines-color-btn" class="toolbar-color-dot" data-color="none"></button>
+        </div>
+        <div class="toolbar-sep"></div>
+        <!-- layout compacto por contornos -->
+        <label class="org-compact-label" title="Pack sibling subtrees by contour: leaves sit right next to their siblings">
+          <input id="org-compact-check" type="checkbox"> Collapsed organigram
+        </label>
+      </div>
+    </div>
+
+    <div id="free-toolbar-controls" class="hidden free-toolbar-controls">
+      <button id="freeAddNodeBtn" class="toolbar-btn toolbar-btn--menu"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add node</button>
+      <button id="shapesBtn" class="toolbar-btn"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.3 10a.7.7 0 0 1-.6-1l4.7-8a.7.7 0 0 1 1.2 0l4.7 8a.7.7 0 0 1-.6 1z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/></svg>Shapes</button>
+
+      <div class="toolbar-sep"></div>
+
+      <button id="free-options-btn" class="toolbar-btn">Options ›</button>
+
+      <div id="free-options-panel" class="free-options-panel free-options-panel--collapsed">
+        <div class="toolbar-sep"></div>
+
+        <!-- color por defecto de nodos -->
+        <div class="toolbar-color-group" title="Default node color">
+          <span class="tcg-label">Node</span>
+          <button id="free-node-color-btn" class="toolbar-color-dot" data-color="none"></button>
+          <input id="free-node-color-input" type="color" class="hidden-color-input" value="#4f7eff" />
+          <button id="free-node-color-clear" class="toolbar-color-clear hidden" title="Clear node color">✕</button>
+        </div>
+
+        <!-- color por defecto de flechas -->
+        <div class="toolbar-color-group" title="Default arrow color">
+          <span class="tcg-label">Arrow</span>
+          <button id="free-arrow-color-btn" class="toolbar-color-dot" data-color="none"></button>
+          <input id="free-arrow-color-input" type="color" class="hidden-color-input" value="#4f7eff" />
+          <button id="free-arrow-color-clear" class="toolbar-color-clear hidden" title="Clear arrow color">✕</button>
+        </div>
+
+        <div class="toolbar-sep"></div>
+
+        <!-- tamaño por defecto de nodos -->
+        <div class="toolbar-size-group" title="Default node size — leave empty to use the type's">
+          <input id="free-size-w" type="number" min="80" max="800" placeholder="W" class="toolbar-size-input" />
+          <span class="tcg-label">×</span>
+          <input id="free-size-h" type="number" min="60" max="600" placeholder="H" class="toolbar-size-input" />
+        </div>
+
+        <div class="toolbar-sep"></div>
+
+        <!-- modo malla -->
+        <button id="free-grid-btn" class="toolbar-btn" title="Toggle background grid"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>Grid</button>
+
+        <div class="toolbar-sep"></div>
+
+        <!-- limpiar filtros -->
+        <button id="free-clear-btn" class="toolbar-btn toolbar-btn--clear" title="Clear all filters">✕ Clear</button>
+      </div>
+    </div>
+
+    <!-- guardar (colapsar) el toolbar: fijo a la derecha, reaparece el martillo flotante -->
+    <button id="toolbar-store" class="toolbar-store-btn" title="Hide toolbar" aria-label="Hide toolbar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"/></svg></button>
+  </div>
+
+  <!-- Cuenta DiagraMinder (nube, doc 26 §5): modal de login/registro. Lo abren los
+       botones del panel Perfil; la lógica vive en connectors.js + account.js. -->
+
+  <!-- Credenciales MCP de una nube de la cuenta (doc 26 §5): el token viaja EN LA URL,
+       así que se copia una sola cosa y se pega en Claude/ChatGPT como conector remoto. -->
+
+  <!-- Compartir UN documento de la nube con otra cuenta DiagraMinder (doc 26 §5).
+       El permiso vive en el conector como ACL de proyecto: el invitado ve ESE
+       documento y ninguno de los otros de la misma carpeta. -->
+
+  <div id="media-picker-overlay" class="modal-overlay hidden">
+    <div class="modal modal-narrow">
+      <p class="modal-hint">Add media</p>
+      <div class="modal-field">
+        <label for="media-picker-file">Upload file</label>
+        <input id="media-picker-file" type="file" accept="image/*,video/*" />
+      </div>
+      <div class="modal-field media-picker-sep"><span>— or —</span></div>
+      <div class="modal-field">
+        <label for="media-picker-url">URL</label>
+        <input id="media-picker-url" type="url" placeholder="https://..." />
+      </div>
+      <div class="modal-actions">
+        <button id="media-picker-cancel">Cancel</button>
+        <button id="media-picker-ok">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="shape-img-overlay" class="modal-overlay hidden">
+    <div class="modal modal-narrow">
+      <p class="modal-hint">Add image</p>
+      <div class="modal-field">
+        <label for="shape-img-file">Upload file</label>
+        <input id="shape-img-file" type="file" accept="image/*" />
+      </div>
+      <div class="modal-field shape-img-sep"><span>— or —</span></div>
+      <div class="modal-field">
+        <label for="shape-img-url">External URL</label>
+        <input id="shape-img-url" type="url" placeholder="https://..." />
+      </div>
+      <div class="modal-actions">
+        <button id="shape-img-cancel">Cancel</button>
+        <button id="shape-img-ok">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="shapes-panel" class="shapes-panel shapes-panel--hidden">
+    <div class="shapes-header">
+      <span class="shapes-title">Shapes</span>
+      <button id="shapes-panel-close" class="shapes-close-btn" title="Close">✕</button>
+    </div>
+    <div id="shapes-grid" class="shapes-grid"></div>
+  </div>
+
+  <div id="node-type-menu" class="free-menu hidden"></div>
+
+  <div id="versiones-overlay" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <p class="modal-hint">File versions</p>
+      <div id="versiones-body" class="versiones-body"></div>
+      <div class="modal-actions">
+        <button id="versiones-cerrar">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="mirror-conflict-overlay" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <p class="modal-hint">The connector mirror differs from this web app</p>
+      <p class="modal-hint-sub">The connector has these folders and files. Which one do you keep?</p>
+      <div id="mirror-conflict-body" class="mirror-conflict-body"></div>
+      <div class="modal-actions">
+        <button id="mirror-keep-mirror">Keep the mirror</button>
+        <button id="mirror-overwrite">Overwrite with the web app</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== NUEVO PROYECTO (preset) =====
+       Un PROYECTO es una carpeta con varios files. Este modal elige QUÉ clase de
+       proyecto es y arma la carpeta con los files que esa clase necesita, ya
+       nombrados. La lista de presets y sus files viven en app/projectPresets.js —
+       acá no hay ninguna: la vista previa se puebla desde ahí. -->
+
+  <div id="folder-modal-overlay" class="modal-overlay hidden">
+    <div class="modal modal-narrow">
+      <p class="modal-hint">New folder</p>
+      <div class="modal-field">
+        <input id="folder-name-input" type="text" placeholder="Folder name" />
+      </div>
+      <div class="modal-actions">
+        <button id="folder-create-confirm">Create</button>
+        <button id="folder-create-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="newtree-overlay" class="modal-overlay hidden">
+    <div class="modal newtree-modal">
+      <p class="modal-hint">New diagram</p>
+      <div class="modal-field">
+        <label class="modal-label" for="newtree-name">Name</label>
+        <input id="newtree-name" class="ia-apis-input" type="text" placeholder="My diagram" autocomplete="off" />
+      </div>
+      <div class="modal-field newtree-typefield">
+        <label class="modal-label">Diagram type</label>
+        <div id="newtree-grid" class="newtree-grid"></div>
+      </div>
+      <div class="modal-actions newtree-actions">
+        <button id="newtree-cancel">Cancel</button>
+        <button id="newtree-create" class="newtree-create">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="custom-catalog-overlay" class="modal-overlay hidden">
+    <div class="modal modal-narrow">
+      <p class="modal-hint">Custom node catalog</p>
+      <div id="custom-catalog-grid" class="catalog-grid"></div>
+      <div class="modal-actions">
+        <button id="custom-make-yours">Make yours</button>
+        <button id="custom-catalog-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="arrow-modal-overlay" class="modal-overlay hidden">
+    <div class="modal modal-narrow">
+      <p class="modal-hint">Editing arrow</p>
+      <div class="modal-field">
+        <label for="arrow-titulo">Title</label>
+        <input id="arrow-titulo" type="text" placeholder="Relationship / title..." />
+      </div>
+      <div class="modal-field">
+        <label>Color</label>
+        <div class="arrow-swatches">
+          <button class="arrow-swatch" data-color="default" title="Default"></button>
+          <button class="arrow-swatch" data-color="#4f7eff" style="background:#4f7eff"></button>
+          <button class="arrow-swatch" data-color="#16a34a" style="background:#16a34a"></button>
+          <button class="arrow-swatch" data-color="#ea580c" style="background:#ea580c"></button>
+          <button class="arrow-swatch" data-color="#dc2626" style="background:#dc2626"></button>
+          <button class="arrow-swatch" data-color="#7c3aed" style="background:#7c3aed"></button>
+          <button class="arrow-swatch" data-color="#0891b2" style="background:#0891b2"></button>
+          <label class="arrow-swatch-palette" title="Custom color">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 100 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-1 .8-1.5 1.8-1.5H16a5 5 0 005-5c0-3.9-4-7-9-7z"/><circle cx="7.5" cy="10.5" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16.5" cy="10.5" r="1"/></svg>
+            <input id="arrow-color-native" type="color" value="#4f7eff" />
+          </label>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="arrow-cancel">Cancel</button>
+        <button id="arrow-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="free-node-menu" class="free-menu hidden">
+    <button data-fact="edit">Edit</button>
+    <button data-fact="color">Color</button>
+  </div>
+
+  <div id="act-arrow-modal-overlay" class="modal-overlay hidden">
+    <div class="modal modal-narrow">
+      <p class="modal-hint">Link color</p>
+      <div class="modal-field">
+        <div class="arrow-swatches">
+          <button class="arrow-swatch" data-color="default" title="Default"></button>
+          <button class="arrow-swatch" data-color="#4f7eff" style="background:#4f7eff"></button>
+          <button class="arrow-swatch" data-color="#16a34a" style="background:#16a34a"></button>
+          <button class="arrow-swatch" data-color="#ea580c" style="background:#ea580c"></button>
+          <button class="arrow-swatch" data-color="#dc2626" style="background:#dc2626"></button>
+          <button class="arrow-swatch" data-color="#7c3aed" style="background:#7c3aed"></button>
+          <button class="arrow-swatch" data-color="#0891b2" style="background:#0891b2"></button>
+          <label class="arrow-swatch-palette" title="Custom color">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 100 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-1 .8-1.5 1.8-1.5H16a5 5 0 005-5c0-3.9-4-7-9-7z"/><circle cx="7.5" cy="10.5" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16.5" cy="10.5" r="1"/></svg>
+            <input id="act-arrow-color-native" type="color" value="#4f7eff" />
+          </label>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="act-arrow-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="act-modal-overlay" class="modal-overlay hidden">
+    <div class="modal modal-narrow">
+      <p class="modal-hint">Editing activity</p>
+      <div class="modal-field">
+        <label for="act-titulo">Title</label>
+        <input id="act-titulo" type="text" placeholder="Activity name..." />
+      </div>
+      <div class="modal-field">
+        <label for="act-duracion">Duration</label>
+        <input id="act-duracion" type="number" min="0" step="1" value="1" />
+      </div>
+      <div class="modal-field">
+        <label>Color</label>
+        <button id="act-color-btn" type="button" class="act-color-btn">🎨 Change color</button>
+      </div>
+      <div class="modal-actions">
+        <button id="act-cancel">Cancel</button>
+        <button id="act-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal modal-rich">
+      <p class="modal-hint">Editing card</p>
+      <div class="modal-field">
+        <label for="modal-titulo">Title</label>
+        <input id="modal-titulo" type="text" placeholder="Card title..." />
+      </div>
+      <div class="modal-field modal-field--editor">
+        <div class="modal-editor-header">
+          <label>Content</label>
+          <div class="modal-editor-header-btns">
+            <button id="modal-read" class="modal-mode-btn" title="Read description aloud"><svg class="modal-mode-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 6v4h2.6L8.5 13V3L5.1 6H2.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M10.8 5.6a3.4 3.4 0 010 4.8M12.6 3.8a6 6 0 010 8.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg> <span id="modal-read-label">Read</span></button>
+            <button id="modal-read-family" class="modal-mode-btn" title="Read this node and all its descendants (title + description, left to right)"><svg class="modal-mode-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="5.5" y="1.5" width="5" height="3.6" rx="1" stroke="currentColor" stroke-width="1.1"/><rect x="1.5" y="10.9" width="5" height="3.6" rx="1" stroke="currentColor" stroke-width="1.1"/><rect x="9.5" y="10.9" width="5" height="3.6" rx="1" stroke="currentColor" stroke-width="1.1"/><path d="M8 5.1v3M4 10.9V8.1h8v2.8" stroke="currentColor" stroke-width="1.1"/></svg> Read family</button>
+            <button id="modal-mode-toggle" class="modal-mode-btn" title="Toggle view/edit"><svg class="modal-mode-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.5 2.6l2.9 2.9-7.4 7.4-3.4.5.5-3.4 7.4-7.4z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M9.2 3.9l2.9 2.9" stroke="currentColor" stroke-width="1.2"/></svg> Edit</button>
+            <button id="modal-mode-expand" class="modal-mode-btn" title="Expand to full screen (page view)"><svg class="modal-mode-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5L9 7M2.5 13.5L7 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg> Expand</button>
+          </div>
+        </div>
+        <div id="modal-editor-wrap" class="modal-editor-wrap"></div>
+      </div>
+      <div class="modal-actions">
+        <button id="modal-cancel">Cancel</button>
+        <button id="modal-save">Save</button>
+      </div>
+    </div>
+  </div>
+  <!-- peek de carta: vista rápida flotante con un click (tablets / lectura) -->
+  <div id="cart-peek" class="cart-peek hidden">
+    <div class="cart-peek-title"></div>
+    <div class="cart-peek-body rich-editor rich-read"></div>
+  </div>
+
+  <!-- MODO LLAMADA: conversar con la IA hablando. El markup vive acá (y no lo
+       arma el JS) para que el snapshot de i18n pueda traducirlo, como el velo del
+       chat. Lo maneja app/voice/callMode.js.
+       NO es un modal: es una barra flotante (+ un panel que se abre y se cierra),
+       así la llamada sigue mientras usás la app y mirás lo que va haciendo la IA. -->
+  <div id="voice-call" class="voice-call hidden" data-state="listening" aria-label="Voice call with the AI">
+
+    <div class="voice-call-panel hidden" id="voice-call-panel">
+      <div class="voice-call-head">
+        <span class="voice-call-title">Voice call</span>
+        <span class="voice-call-engine" id="voice-call-engine"></span>
+      </div>
+
+      <div class="voice-orb" id="voice-orb" aria-hidden="true">
+        <span class="voice-orb-ring"></span>
+        <span class="voice-orb-ring voice-orb-ring2"></span>
+        <span class="voice-orb-core"></span>
+      </div>
+
+      <p class="voice-call-live" id="voice-call-live"></p>
+      <div class="voice-call-log" id="voice-call-log" aria-live="polite"></div>
+      <p class="voice-call-hint">Talk normally: when you stop, what you said is sent. Talk over the AI to cut it off — it gets told exactly where you interrupted it. The call keeps going while you use the app.</p>
+    </div>
+
+    <div class="voice-call-bar">
+      <span class="voice-call-dot" id="voice-call-dot" aria-hidden="true"></span>
+      <span class="voice-call-status" id="voice-call-status" aria-live="polite">Listening…</span>
+      <button class="voice-call-btn" id="voice-call-mute" type="button" title="Mute your microphone (the call keeps going)">Mic off</button>
+      <button class="voice-call-btn" id="voice-call-skip" type="button" title="Stop the AI from talking" disabled>Skip</button>
+      <button class="voice-call-btn voice-call-icon" id="voice-call-toggle" type="button" title="Show the conversation" aria-expanded="false">⌃</button>
+      <button class="voice-call-btn is-hang" id="voice-call-hang" type="button">End call</button>
+    </div>
+  </div>
+
+  <!-- barra del reproductor TTS: sigue sonando aunque cierres el modal -->
+  <div id="tts-bar" class="tts-bar hidden">
+    <svg class="tts-bar-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 6v4h2.6L8.5 13V3L5.1 6H2.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M10.8 5.6a3.4 3.4 0 010 4.8M12.6 3.8a6 6 0 010 8.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+    <span id="tts-bar-label" class="tts-bar-label"></span>
+    <button id="tts-prev" class="tts-bar-btn" title="Previous node">&lt;|</button>
+    <button id="tts-toggle" class="tts-bar-btn" title="Pause / resume">||</button>
+    <button id="tts-next" class="tts-bar-btn" title="Next node">|&gt;</button>
+    <button id="tts-eye" class="tts-bar-btn" title="Follow reading (move camera to each node)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8z" stroke="currentColor" stroke-width="1.1"/><circle cx="8" cy="8" r="1.9" stroke="currentColor" stroke-width="1.1"/></svg></button>
+    <button id="tts-open" class="tts-bar-btn" title="Open each node as it's read">[&nbsp;]</button>
+    <select id="tts-rate" class="tts-bar-select" title="Speed">
+      <option value="0.25">x0.25</option>
+      <option value="0.5">x0.50</option>
+      <option value="1" selected>x1</option>
+      <option value="1.5">x1.50</option>
+      <option value="2">x2</option>
+    </select>
+    <select id="tts-voice" class="tts-bar-select tts-bar-voice" title="Voice"></select>
+    <button id="tts-close" class="tts-bar-btn tts-bar-close" title="Stop reading">✕</button>
+  </div>
+
+  <!-- editor maximizado: vista "documento" (hojas A4) a pantalla completa -->
+  <div id="editor-max-overlay" class="editor-max-overlay hidden">
+    <div class="editor-max-bar">
+      <button id="editor-max-back" class="editor-max-back" title="Back to editor">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Back</span>
+      </button>
+      <span class="editor-max-title" id="editor-max-title"></span>
+      <div class="editor-max-actions">
+        <!-- Save con indicador de cambios (bolita): aplica a las dos sesiones —
+             nodo (guarda el nodo sin cerrar) y docs (reescribe el .docx) -->
+        <button id="editor-max-save" class="modal-mode-btn" title="Save (Ctrl+S)"><svg class="modal-mode-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 2.5h9L13.5 4.5v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M5 2.5V6h5V2.5M4.5 14.5V10h7v4.5" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg> Save<span id="editor-max-dirty" class="max-dirty hidden"></span></button>
+        <div class="max-menu-wrap">
+          <button id="editor-max-view" class="modal-mode-btn" title="View options"><svg class="modal-mode-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8z" stroke="currentColor" stroke-width="1.1"/><circle cx="8" cy="8" r="1.9" stroke="currentColor" stroke-width="1.1"/></svg> View</button>
+          <div id="editor-max-view-menu" class="max-menu hidden">
+            <button id="view-vruler-item" class="max-menu-item"><span id="view-vruler-tick" class="max-menu-tick"></span> Rulers</button>
+          </div>
+        </div>
+        <div class="max-menu-wrap">
+          <button id="editor-max-config" class="modal-mode-btn" title="Document settings"><svg class="modal-mode-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.2"/><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6L11 5M5 11l-1.4 1.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg> Config</button>
+          <div id="editor-max-config-menu" class="max-menu hidden">
+            <button id="config-margins-item" class="max-menu-item">Margins</button>
+          </div>
+        </div>
+        <button id="editor-max-read" class="modal-mode-btn" title="Read this document aloud"><svg class="modal-mode-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 6v4h2.6L8.5 13V3L5.1 6H2.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M10.8 5.6a3.4 3.4 0 010 4.8M12.6 3.8a6 6 0 010 8.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg> <span id="editor-max-read-label">Read</span></button>
+      </div>
+    </div>
+    <!-- regla horizontal (cm reales, estilo Word); expandirEditor la mueve
+         entre la toolbar y la hoja, y la devuelve acá al volver -->
+    <div id="editor-max-ruler" class="editor-max-ruler" aria-hidden="true"></div>
+    <!-- regla vertical (toggle en View, default oculta); fija, sigue la hoja visible -->
+    <div id="editor-max-vruler" class="editor-max-vruler hidden" aria-hidden="true"></div>
+    <div class="editor-max-host" id="editor-max-host"></div>
+    <!-- modal de sangrías (Config → Margins): página ficticia + dos reglas -->
+    <div id="doc-config-overlay" class="modal-overlay doc-config-overlay hidden">
+      <div class="modal doc-config-modal">
+        <h3 class="doc-config-title">Margins</h3>
+        <div class="doc-config-grid">
+          <div class="doc-config-corner"></div>
+          <div id="doc-config-hruler" class="doc-config-hruler"></div>
+          <div id="doc-config-vruler" class="doc-config-vruler"></div>
+          <div class="doc-config-pagewrap"><div id="doc-config-page" class="doc-config-page"></div></div>
+        </div>
+        <div class="modal-actions">
+          <button id="doc-config-reset">Reset</button>
+          <button id="doc-config-done">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="color-modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <p class="modal-hint">Pick a color</p>
+      <div class="color-swatches">
+        <button class="color-swatch" data-color="default" title="No color"></button>
+        <!-- fila 1: oscuros mate -->
+        <button class="color-swatch" data-color="#2e3f58" style="background:#2e3f58" title="Slate"></button>
+        <button class="color-swatch" data-color="#1e3528" style="background:#1e3528" title="Forest"></button>
+        <button class="color-swatch" data-color="#40281a" style="background:#40281a" title="Cocoa"></button>
+        <button class="color-swatch" data-color="#3e1a28" style="background:#3e1a28" title="Wine"></button>
+        <button class="color-swatch" data-color="#2c2042" style="background:#2c2042" title="Grape"></button>
+        <!-- fila 2: pasteles -->
+        <button class="color-swatch" data-color="#93c5fd" style="background:#93c5fd" title="Pastel blue"></button>
+        <button class="color-swatch" data-color="#86efac" style="background:#86efac" title="Pastel green"></button>
+        <button class="color-swatch" data-color="#fdba74" style="background:#fdba74" title="Pastel orange"></button>
+        <button class="color-swatch" data-color="#fca5a5" style="background:#fca5a5" title="Pastel pink"></button>
+        <button class="color-swatch" data-color="#c4b5fd" style="background:#c4b5fd" title="Pastel lavender"></button>
+        <button class="color-swatch" data-color="#7dd3fc" style="background:#7dd3fc" title="Pastel sky"></button>
+      </div>
+      <div class="color-palette-row">
+        <input id="color-picker-native" type="color" value="#242424" title="Pick any color" />
+        <span class="color-palette-label">Palette</span>
+      </div>
+      <div class="color-hex-row">
+        <label for="color-hex-input">Hex</label>
+        <input id="color-hex-input" type="text" maxlength="7" placeholder="#rrggbb" spellcheck="false" />
+      </div>
+      <div class="modal-actions">
+        <button id="color-cancel">Cancel</button>
+        <button id="color-save">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="shape-modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <p class="modal-hint">Pick a shape</p>
+      <div class="shape-options">
+        <button class="shape-opt" data-shape="default">▭ Rectangle</button>
+        <button class="shape-opt" data-shape="sharp">◻ Sharp corners</button>
+        <button class="shape-opt" data-shape="rounded">▢ Rounded</button>
+        <button class="shape-opt" data-shape="pill">⬭ Pill</button>
+      </div>
+      <div class="modal-actions">
+        <button id="shape-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+<div id="home-screen" style="position:fixed;inset:56px 0 0 0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;overflow-y:auto;overflow-x:hidden">
+
+  <div style="position:absolute;inset:0;background-image:radial-gradient(var(--border-strong) 1px, transparent 1px);background-size:22px 22px;pointer-events:none;opacity:.55"></div>
+  <div style="position:absolute;top:-10%;left:50%;transform:translateX(-50%);width:1100px;height:640px;background:radial-gradient(ellipse at center, var(--accent-dim), transparent 70%);pointer-events:none;filter:blur(2px)"></div>
+
+  <section style="position:relative;min-height:calc(100vh - 56px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:30px;padding:32px 20px;box-sizing:border-box">
+
+    <svg class="dm-anim" width="100%" height="100%" viewBox="0 0 1200 640" preserveAspectRatio="xMidYMid slice" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:.65">
+      <line x1="150" y1="120" x2="410" y2="230" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="320" stroke-dashoffset="320" style="animation:dm-draw 1.6s ease-out .1s forwards"></line>
+      <line x1="410" y1="230" x2="740" y2="150" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="380" stroke-dashoffset="380" style="animation:dm-draw 1.6s ease-out .35s forwards"></line>
+      <line x1="740" y1="150" x2="1040" y2="270" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="340" stroke-dashoffset="340" style="animation:dm-draw 1.6s ease-out .6s forwards"></line>
+      <line x1="410" y1="230" x2="290" y2="470" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="280" stroke-dashoffset="280" style="animation:dm-draw 1.6s ease-out .45s forwards"></line>
+      <line x1="740" y1="150" x2="860" y2="470" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="340" stroke-dashoffset="340" style="animation:dm-draw 1.6s ease-out .8s forwards"></line>
+      <line x1="290" y1="470" x2="560" y2="540" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="300" stroke-dashoffset="300" style="animation:dm-draw 1.6s ease-out .95s forwards"></line>
+      <line x1="860" y1="470" x2="560" y2="540" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="300" stroke-dashoffset="300" style="animation:dm-draw 1.6s ease-out 1.1s forwards"></line>
+
+      <g style="animation:dm-float 8s ease-in-out infinite">
+        <circle cx="150" cy="120" r="6" fill="var(--accent)"></circle>
+        <circle cx="150" cy="120" r="12" fill="none" stroke="var(--accent-dim)" stroke-width="6"></circle>
+      </g>
+      <g style="animation:dm-float2 9s ease-in-out infinite .2s">
+        <circle cx="410" cy="230" r="9" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"></circle>
+      </g>
+      <g style="animation:dm-float3 10s ease-in-out infinite .4s">
+        <circle cx="740" cy="150" r="7" fill="var(--surface)" stroke="var(--border-strong)" stroke-width="2"></circle>
+      </g>
+      <g style="animation:dm-float 9.5s ease-in-out infinite .3s">
+        <circle cx="1040" cy="270" r="6" fill="var(--surface)" stroke="var(--border-strong)" stroke-width="2"></circle>
+      </g>
+      <g style="animation:dm-float2 8.5s ease-in-out infinite .5s">
+        <circle cx="290" cy="470" r="6" fill="var(--surface)" stroke="var(--border-strong)" stroke-width="2"></circle>
+      </g>
+      <g style="animation:dm-float3 7.5s ease-in-out infinite .1s">
+        <circle cx="860" cy="470" r="6" fill="var(--surface)" stroke="var(--border-strong)" stroke-width="2"></circle>
+      </g>
+      <g style="animation:dm-float 9s ease-in-out infinite .6s">
+        <rect x="548" y="528" width="24" height="24" rx="5" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"></rect>
+      </g>
+
+      <circle r="3.5" fill="var(--accent)" style="offset-path:path('M150,120 L410,230 L740,150 L1040,270');animation:dm-token 7s linear infinite 1.2s"></circle>
+      <circle r="3.5" fill="var(--accent)" style="offset-path:path('M290,470 L560,540 L860,470');animation:dm-token2 6s linear infinite 2.4s"></circle>
+    </svg>
+
+    <div class="dm-in" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:24px;max-width:780px;text-align:center;animation:dm-fadeup .7s ease-out both">
+      <h1 style="margin:0;font-size:clamp(36px,6vw,64px);font-weight:680;letter-spacing:-.035em;line-height:1.04">
+        Diagrams that<br><span style="color:var(--accent)">do the work.</span>
+      </h1>
+      <p style="margin:0;font-size:clamp(15px,1.6vw,18.5px);color:var(--text-muted);max-width:520px;line-height:1.6">Build trees, flows, object models — and AI agent teams — on one local-first canvas. Versioned, reversible, private.</p>
+
+      <!-- Dos filas: arriba los dos caminos de siempre (un file suelto / abrir algo) y
+           ABAJO, más ancho, "New project" — el camino RESALTADO, que arma una carpeta
+           con los files que esa clase de proyecto necesita. El ancho extra es la
+           jerarquía: se lee como la base sobre la que se apoyan los otros dos. -->
+      <div class="home-cta">
+        <div class="home-cta-row">
+          <button id="home-new" class="dm-btn-secondary">New diagram</button>
+          <button id="home-open" class="dm-btn-secondary">Open…</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="position:relative;padding:70px 24px 36px;max-width:1160px;margin:0 auto">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:26px;gap:16px;flex-wrap:wrap">
+      <h2 style="margin:0;font-size:13px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)">Eight modes, one canvas</h2>
+      <span style="font-size:13px;color:var(--text-muted)">Switch modes without leaving the board</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px">
+
+      <div class="dm-card">
+        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"></circle><circle cx="18" cy="6" r="2.5"></circle><circle cx="12" cy="18" r="2.5"></circle><path d="M12 15.5V12H6V8.5M12 12h6V8.5"></path></svg>
+        </div>
+        <div style="font-size:15.5px;font-weight:650">Organigram</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Hierarchical card trees, drawn top-down like an org chart.</div>
+      </div>
+
+      <div class="dm-card">
+        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="5" height="5" rx="1"></rect><circle cx="18" cy="7" r="2.5"></circle><path d="M9 16l4-3 6 2"></path><path d="M4 19h4"></path></svg>
+        </div>
+        <div style="font-size:15.5px;font-weight:650">Canvas</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Free canvas — loose nodes, arrows and shapes, no structure imposed.</div>
+      </div>
+
+      <div class="dm-card">
+        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M5 6l1.5 1.5L9 5"></path><path d="M12 6h7"></path><path d="M5 12l1.5 1.5L9 11"></path><path d="M12 12h7"></path><path d="M5 18l1.5 1.5L9 17"></path><path d="M12 18h7"></path></svg>
+        </div>
+        <div style="font-size:15.5px;font-weight:650">Questionnaire</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Study questionnaires on the canvas — Q&amp;A, multiple-choice, tests.</div>
+      </div>
+
+      <div class="dm-card">
+        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="9" height="3" rx="1"></rect><rect x="3" y="11" width="14" height="3" rx="1"></rect><rect x="3" y="17" width="6" height="3" rx="1"></rect></svg>
+        </div>
+        <div style="font-size:15.5px;font-weight:650">Activities</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Activities &amp; precedences, with an arrows view and a Gantt view.</div>
+      </div>
+
+      <div class="dm-card">
+        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"></path><path d="M12 3v9M12 12l8-4.5M12 12l-8-4.5"></path></svg>
+        </div>
+        <div style="font-size:15.5px;font-weight:650">Object</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Dynamic classes &amp; objects — build graphs, generate JSON / API calls.</div>
+      </div>
+
+      <div class="dm-card">
+        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M8 6L3 12l5 6"></path><path d="M16 6l5 6-5 6"></path></svg>
+        </div>
+        <div style="font-size:15.5px;font-weight:650">Editor</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Open a real folder and edit files, VS Code-style — for you and the AI.</div>
+      </div>
+
+      <div class="dm-card">
+        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M13 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9z"></path><path d="M13 3v6h5"></path><path d="M9 14h6M9 17h4"></path></svg>
+        </div>
+        <div style="font-size:15.5px;font-weight:650">Documents</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">A library for your PDFs, images, audio &amp; text — read them in dark mode, Acrobat-style tools coming.</div>
+      </div>
+
+      <div class="dm-card dm-card-flagship">
+        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="6" r="2.5"></circle><circle cx="19" cy="6" r="2.5"></circle><circle cx="12" cy="18" r="2.5"></circle><path d="M7 7l10 -1M7 8l4.5 8.5M17 8l-4.5 8.5"></path></svg>
+        </div>
+        <div style="font-size:15.5px;font-weight:650;display:flex;align-items:center;gap:8px">IA Orchestrator<span style="font-size:10px;font-weight:700;letter-spacing:.04em;color:var(--accent);background:var(--accent-dim);padding:2px 7px;border-radius:100px">FLAGSHIP</span></div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">A visual AI company — agents, resources, tasks and departments.</div>
+      </div>
+
+    </div>
+  </section>
+
+  <section style="position:relative;margin:36px auto;max-width:1160px;padding:0 24px">
+    <div style="position:relative;background:var(--surface2);border:1px solid var(--border);border-radius:18px;padding:44px;display:flex;flex-wrap:wrap;gap:36px;align-items:center;overflow:hidden">
+      <div style="position:absolute;top:-40%;right:-10%;width:420px;height:420px;background:radial-gradient(circle, var(--accent-dim), transparent 70%);pointer-events:none"></div>
+
+      <svg class="dm-anim" width="300" height="150" viewBox="0 0 280 140" style="flex:0 0 auto;position:relative">
+        <line x1="30" y1="70" x2="140" y2="30" stroke="var(--border-strong)" stroke-width="1.4"></line>
+        <line x1="140" y1="30" x2="140" y2="110" stroke="var(--border-strong)" stroke-width="1.4"></line>
+        <line x1="140" y1="110" x2="250" y2="70" stroke="var(--border-strong)" stroke-width="1.4"></line>
+        <circle cx="30" cy="70" r="8" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"></circle>
+        <circle cx="140" cy="30" r="8" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"></circle>
+        <circle cx="140" cy="110" r="8" fill="var(--surface)" stroke="var(--border-strong)" stroke-width="2"></circle>
+        <rect x="232" y="58" width="24" height="24" rx="5" fill="var(--surface)" stroke="var(--border-strong)" stroke-width="2"></rect>
+        <circle r="4" fill="var(--accent)" style="offset-path:path('M30,70 L140,30 L140,110 L250,70');animation:dm-token 5s linear infinite"></circle>
+      </svg>
+      <div style="flex:1 1 320px;display:flex;flex-direction:column;gap:16px;position:relative">
+        <h3 style="margin:0;font-size:24px;font-weight:680;letter-spacing:-.015em">Not just a diagram — a company of AI agents.</h3>
+        <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px;font-size:14.5px;color:var(--text-muted)">
+          <li style="display:flex;gap:9px;align-items:baseline"><span style="color:var(--accent);font-weight:700">—</span>Delegates &amp; runs in parallel</li>
+          <li style="display:flex;gap:9px;align-items:baseline"><span style="color:var(--accent);font-weight:700">—</span>Uses your projects as tools</li>
+          <li style="display:flex;gap:9px;align-items:baseline"><span style="color:var(--accent);font-weight:700">—</span>Watch it live, undo anything</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section style="position:relative;padding:36px 24px 8px;max-width:1160px;margin:0 auto">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-bottom:28px">
+      <span style="font-size:12px;font-weight:650;letter-spacing:.08em;color:var(--accent)">YOUR COMPUTE · YOUR KEYS · YOUR CLOUD</span>
+      <h2 style="margin:0;font-size:clamp(22px,3vw,30px);font-weight:680;letter-spacing:-.02em">Runs on your terms — no surprise AI bills.</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+      <div class="dm-card">
+        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><rect x="6" y="6" width="12" height="12" rx="2"></rect><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"></path></svg>
+        </div>
+        <div style="font-size:15.5px;font-weight:650">Local AI, zero API bills</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Point agents at the AI already on your machine — local CLIs like Claude Code. No tokens metered, no per-call cost.</div>
+      </div>
+      <div class="dm-card">
+        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="15" r="4"></circle><path d="M11 12l9-9M17 4l3 3M14 7l2.5 2.5"></path></svg>
+        </div>
+        <div style="font-size:15.5px;font-weight:650">Or bring your own API</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Prefer frontier models? Drop in your Anthropic / OpenAI / other keys. Mix per agent — a cheap model to coordinate, a strong one for the hard parts.</div>
+      </div>
+      <div class="dm-card">
+        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"></circle><circle cx="18" cy="6" r="2.5"></circle><circle cx="12" cy="18" r="2.5"></circle><path d="M8 7.5L11 16.5M16 7.5L13 16.5"></path></svg>
+        </div>
+        <div style="font-size:15.5px;font-weight:650">Your own cloud + MCP</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Run it server-side on your self-hosted connectors. Keys stay in the connector, never the browser. Agents reach out through MCP and custom APIs.</div>
+      </div>
+    </div>
+    <p style="text-align:center;margin:26px 0 0;font-size:13.5px;color:var(--text-muted)">Local-first. Private by default. Your keys never leave your machine.</p>
+  </section>
+
+  <section style="position:relative;padding:22px 24px 44px;max-width:1160px;margin:0 auto">
+    <div style="display:flex;flex-wrap:wrap;gap:28px;justify-content:center;padding:20px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:13px;color:var(--text-muted)">
+      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>Local-first &amp; private</span>
+      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>Your own cloud + MCP</span>
+      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>Full version history</span>
+      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>Reversible AI</span>
+    </div>
+  </section>
+
+  <footer style="position:relative;display:flex;align-items:center;justify-content:center;padding:26px;color:var(--text-muted);font-size:12px">
+    <span>Diagra<span style="color:var(--accent)">Minder</span></span>
+  </footer>
+
+</div>
+
+  <div id="boardContainer">
+    <div id="board"></div>
+  </div>
+
+  <div id="zoom-controls">
+    <!-- martillo: despliega el toolbar. Solo visible cuando el toolbar está guardado -->
+    <button id="zoom-hammer" class="zoom-btn zoom-btn-solo" title="Show toolbar" aria-label="Show toolbar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 12-8.4 8.4a2.1 2.1 0 0 1-3-3L12 9"/><path d="M17.6 15 22 10.6"/><path d="m20.9 11.7-1.3-1.3c-.6-.6-.9-1.4-.9-2.2v-.9L16 4.6A5.6 5.6 0 0 0 12 3H9l.9.8A6.2 6.2 0 0 1 12 8.4V10l2 2h2.5l2.3 1.9"/></svg></button>
+
+    <!-- stack agrupado (estilo Obsidian): botones cuadrados juntos -->
+    <div class="zoom-stack">
+      <!-- tuerca: expande el grupo de zoom (visible cuando está colapsado) -->
+      <button id="zoom-gear" class="zoom-btn" title="Zoom options" aria-label="Zoom options"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+
+      <!-- grupo expandible: acercar / ajustar / alejar -->
+      <div id="zoom-group" class="zoom-group">
+        <button id="fab-zoom-in"  class="zoom-btn" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button id="fab-fit"      class="zoom-btn" title="Reset zoom" aria-label="Reset zoom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/></svg></button>
+        <button id="fab-zoom-out" class="zoom-btn" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+      </div>
+
+      <!-- colapsar el grupo (abajo del todo, flecha ^) -->
+      <button id="zoom-collapse" class="zoom-btn" title="Collapse" aria-label="Collapse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 15l-6-6-6 6"/></svg></button>
+    </div>
+
+    <!-- ⛶ pantalla completa (canvas completo) -->
+    <button id="fullscreen-btn" class="zoom-btn zoom-btn-solo" title="Full screen" aria-label="Full screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>
+  </div>
+  <!-- Librerías de export servidas DESDE ACÁ, no desde un CDN de terceros.
+       Antes venían de cdnjs y unpkg SIN `integrity`: cualquiera que comprometiera
+       esos CDNs ejecutaba código en el origen de la app, con acceso al localStorage
+       donde viven los tokens del conector y las API keys de IA. Los archivos de
+       `vendor/` se verificaron contra el SRI oficial de cdnjs y el tarball de npm
+       (bitácora §40). Bonus: la app ya no depende de que el CDN esté vivo. -->
+  <script src="/vendor/jszip.min.js"></script>
+  <script src="/vendor/html2canvas.min.js"></script>
+  <script src="/vendor/jspdf.umd.min.js"></script>
+  <script src="/vendor/html-docx.js"></script>
+  <!-- ?v= igual que en el CSS: mientras el zone setting "Browser Cache TTL" de
+       Cloudflare pise el no-cache del origen, subir este número es lo único que
+       invalida el bundle YA cacheado en los navegadores. -->
+  <script type="module" src="./dist/bundle.js?v=56"></script>
+</body>
+</html>

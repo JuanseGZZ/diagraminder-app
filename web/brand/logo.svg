@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120"
+     role="img" aria-label="DiagraMinder">
+  <!-- Logo de DiagraMinder. El glifo es un árbol LTR (raíz a la izquierda, hijos a la
+       derecha): el layout insignia de la app. El azul es el token de acento de
+       styles.css. Fuente única: de acá salen los PNG de brand/.
+       OJO: un comentario XML no puede contener dos guiones seguidos. Si se escriben
+       (p. ej. nombrando la variable CSS del acento), el SVG deja de ser XML válido y
+       el navegador NO lo dibuja como archivo suelto: favicon roto y logo roto en la
+       página legal, sin ningún error visible en consola. -->
+  <rect width="120" height="120" rx="27" fill="#3f6bc9"/>
+  <g fill="none" stroke="#ffffff" stroke-width="5.5" stroke-linecap="round">
+    <path d="M40 60 C 57 60, 60 37, 76 37"/>
+    <path d="M40 60 C 57 60, 60 83, 76 83"/>
+  </g>
+  <circle cx="34" cy="60" r="11" fill="#ffffff"/>
+  <circle cx="83" cy="37" r="9"  fill="#ffffff"/>
+  <circle cx="83" cy="83" r="9"  fill="#ffffff"/>
+</svg>

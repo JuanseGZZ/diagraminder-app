@@ -1,0 +1,51 @@
+/* Estilos compartidos de las páginas legales (/privacidad y /terminos).
+   Están APARTE para que las dos no se desincronicen: son documentos que se tocan
+   poco y siempre de a uno. Sin dependencias externas — nginx los sirve tal cual y
+   los tokens se declaran acá, no se heredan de la app. */
+  /* Página legal autocontenida: la sirve nginx directo, sin bundle ni fuentes
+     externas. Los colores siguen los tokens de la app (--accent #3f6bc9) pero se
+     declaran acá para que la página funcione sola. */
+  :root {
+    --bg: #ffffff; --surface: #f4f5f7; --text: #1b1e25; --muted: #5d6472;
+    --border: #d8dce3; --accent: #3f6bc9; --warn-bg: #fff6e0; --warn-bd: #e3b757;
+    --warn-tx: #6b4d05;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #21242c; --surface: #2b2e37; --text: #e6e9ef; --muted: #9aa2b1;
+      --border: #3d4350; --accent: #7b9ce0; --warn-bg: #37301c; --warn-bd: #8a6f22;
+      --warn-tx: #f0d79a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 400 16px/1.65 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 40px 22px 80px; }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+  header img { width: 44px; height: 44px; border-radius: 10px; }
+  header b { font-size: 20px; font-weight: 700; letter-spacing: -.2px; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 26px 0 6px; letter-spacing: -.5px; }
+  h2 { font-size: 19px; margin: 34px 0 10px; letter-spacing: -.2px; }
+  .meta { color: var(--muted); font-size: 14px; margin: 0 0 26px; }
+  p, li { color: var(--text); }
+  ul { padding-left: 20px; }
+  li { margin: 6px 0; }
+  a { color: var(--accent); }
+  .beta {
+    background: var(--warn-bg); border: 1px solid var(--warn-bd); color: var(--warn-tx);
+    border-radius: 10px; padding: 16px 18px; margin: 22px 0 6px;
+  }
+  /* `>` a propósito: solo el TÍTULO del recuadro es bloque. Con `.beta strong` se
+     llevaba puesto también los <strong> de adentro del párrafo y partía el texto. */
+  .beta > strong { display: block; margin-bottom: 4px; font-size: 15px; }
+  .beta p { color: var(--warn-tx); margin: 0; font-size: 15px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 15px; }
+  th, td { border: 1px solid var(--border); padding: 9px 11px; text-align: left; vertical-align: top; }
+  th { background: var(--surface); font-weight: 600; }
+  .wide { overflow-x: auto; }
+  code { background: var(--surface); padding: 1px 5px; border-radius: 4px; font-size: 14px; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 52px 0 0; }
+  footer { color: var(--muted); font-size: 14px; margin-top: 26px; }
+  .lang { font-size: 14px; margin-top: 8px; }

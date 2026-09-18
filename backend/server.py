@@ -1,0 +1,1837 @@
+#!/usr/bin/env python3
+"""DiagraMind — backend local (paso 2: bridge a Claude Code).
+
+Servidor mínimo que corre en la máquina de cada persona. La web ("Conectar
+local") lo detecta vía /health y lo usa como backend para hablar con **Claude
+Code** instalado en esta misma máquina.
+
+Cómo bridgea (sin webhooks: Claude corre acá al lado):
+  1. La web manda un árbol con  POST /projects/sync  → se escribe a disco como
+     <appdir>/projects/<id>/tree.json  y se instalan las skills del dominio en
+     <proyecto>/.claude/skills/.
+  2. La web dispara un turno con  POST /chat  → se spawnea  `claude -p ...`  en
+     modo headless (stream-json) con cwd = la carpeta del proyecto. Claude edita
+     tree.json in-place.
+  3. La web escucha  GET /chat/stream?runId=...  (SSE) y va recibiendo los
+     eventos (texto del asistente, herramientas, estado).
+  4. Al terminar, la web pide  GET /projects/tree?id=...  y reimporta el árbol
+     editado en su localStorage.
+
+Diseño:
+- Solo stdlib de Python 3 → cero dependencias, multiplataforma.
+- Escucha SOLO en 127.0.0.1 (loopback) → no queda expuesto a la red.
+- CORS abierto para que la web (file:// u otro origen) pueda consultarlo.
+
+Uso:
+    python3 server.py            # puerto por defecto 8765
+    python3 server.py --port N   # otro puerto
+
+Detener: Ctrl+C
+"""
+
+import argparse
+import base64
+import hmac
+import json
+import os
+import secrets
+import shutil
+import subprocess
+import sys
+import ssl
+import tempfile
+import threading
+import time
+import urllib.error
+import urllib.request
+import uuid
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse, parse_qs
+
+# módulos desacoplados (ver claude.py / codex.py / gemini.py / cli_base.py / etc.)
+from util import safe_name, safe_file_name
+from runs import (RUNS, RUNS_LOCK, SESSION_MAP, new_run, emit, set_status,
+                  perm_ask, perm_answer)
+import docsfs
+import editorfs
+import orchestrator
+import panel
+import panel_ui
+import sourcever
+import svgit
+from skills import install_skills
+from claude import find_claude, claude_version
+from clis import CLIS, run_cli
+
+HOST = "127.0.0.1"
+DEFAULT_PORT = 8765
+# puerto REAL en el que quedó escuchando (lo fija main()): los agentes CLI confinados
+# del orquestador necesitan la URL propia para hablarle al MCP del editor.
+PORT = DEFAULT_PORT
+NAME = "diagramind-local"
+VERSION = "0.33.7"   # el orquestador corre Claude Code y Antigravity, mezclados
+
+# ===================== rutas / disco =====================
+
+def app_dir():
+    """Carpeta de datos del backend, por SO."""
+    home = os.path.expanduser("~")
+    if sys.platform == "darwin":
+        base = os.path.join(home, "Library", "Application Support", "DiagraMind")
+    elif os.name == "nt":
+        base = os.path.join(os.environ.get("LOCALAPPDATA", home), "DiagraMind")
+    else:
+        base = os.path.join(os.environ.get("XDG_DATA_HOME",
+                            os.path.join(home, ".local", "share")), "DiagraMind")
+    return base
+
+
+def config_path():
+    return os.path.join(app_dir(), "config.json")
+
+
+# ===================== token de acceso (auth local) =====================
+# Aunque el server escucha SOLO en 127.0.0.1, el CORS es abierto: cualquier web
+# que abras en el navegador podría pegarle al backend. Un token random corta eso.
+# Se guarda en <app_dir>/token.txt: si no existe se genera al azar; si existe se
+# usa. La web lo manda en cada request (?token= o header X-DiagraMind-Token).
+_TOKEN = None
+
+
+def token_path():
+    return os.path.join(app_dir(), "token.txt")
+
+
+def get_token():
+    global _TOKEN
+    if _TOKEN is None:
+        _TOKEN = _load_or_create_token()
+    return _TOKEN
+
+
+def _load_or_create_token():
+    p = token_path()
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            t = f.read().strip()
+        if t:
+            return t
+    except Exception:
+        pass
+    t = secrets.token_urlsafe(24)
+    try:
+        os.makedirs(app_dir(), exist_ok=True)
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(t + "\n")
+    except OSError:
+        pass
+    return t
+
+
+def regenerate_token():
+    """Genera una contraseña nueva y la persiste (botón «Regenerar» del panel).
+    La web queda desconectada hasta que le peguen la nueva."""
+    global _TOKEN
+    _TOKEN = secrets.token_urlsafe(24)
+    try:
+        os.makedirs(app_dir(), exist_ok=True)
+        with open(token_path(), "w", encoding="utf-8") as f:
+            f.write(_TOKEN + "\n")
+    except OSError:
+        pass
+    return _TOKEN
+
+
+def _load_config():
+    try:
+        with open(config_path(), "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+# Raíz donde el conector guarda TODAS las carpetas. Configurable (config.json);
+# default <appdir>/projects. Se cachea para no leer el archivo en cada poll.
+_ROOT = None
+
+
+def projects_dir():
+    global _ROOT
+    if _ROOT is None:
+        _ROOT = _load_config().get("root") or os.path.join(app_dir(), "projects")
+    return _ROOT
+
+
+def set_root(path):
+    global _ROOT
+    _ROOT = path
+    os.makedirs(app_dir(), exist_ok=True)
+    cfg = _load_config()
+    cfg["root"] = path
+    with open(config_path(), "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        pass
+
+
+def safe_pid(pid):
+    # pid viene de la web; sanitizar para que no escape del dir
+    return "".join(c for c in str(pid) if c.isalnum() or c in "-_") or "default"
+
+
+# Estructura en disco (2 niveles): <root>/<carpeta>/<arbol>/tree.json
+#   <root>/folders.json              ← índice de carpetas
+#   <root>/<carpeta>/index.json      ← índice por carpeta (manifiesto del chat)
+#   <root>/<carpeta>/.claude/skills  ← skills (cwd del chat en esa carpeta)
+def folder_dir(folder):
+    return os.path.join(projects_dir(), safe_name(folder or "Local"))
+
+
+# El directorio de cada proyecto usa su NOMBRE (real), no el id. El id (interno de
+# la web) se resuelve para el mirror leyendo el index.json de la carpeta.
+def tree_dir(folder, name):
+    return os.path.join(folder_dir(folder), safe_name(name))
+
+
+# ===================== adjuntos del chat (tempFiles) =====================
+# Los archivos que el usuario arrastra/sube en el chat se guardan en una carpeta
+# temporal DENTRO del proyecto (<root>/<carpeta>/<proyecto>/tempFiles/), así Claude
+# los lee con una ruta relativa a su cwd (la carpeta). Viven como mucho TEMP_TTL_DAYS
+# días: cada subida (y el arranque) barre los vencidos. Ver doc 18 / 19 (uploads).
+TEMP_DIRNAME = "tempFiles"
+TEMP_TTL_DAYS = 10
+TEMP_TTL_SECS = TEMP_TTL_DAYS * 24 * 3600
+
+
+def temp_dir(folder, name):
+    return os.path.join(tree_dir(folder, name), TEMP_DIRNAME)
+
+
+def sweep_temp_files():
+    """Borra adjuntos con más de TEMP_TTL_DAYS días en TODOS los tempFiles/."""
+    now = time.time()
+    root = projects_dir()
+    if not os.path.isdir(root):
+        return
+    for dirpath, dirnames, filenames in os.walk(root):
+        if os.path.basename(dirpath) != TEMP_DIRNAME:
+            continue
+        for fn in filenames:
+            fp = os.path.join(dirpath, fn)
+            try:
+                if now - os.path.getmtime(fp) > TEMP_TTL_SECS:
+                    os.remove(fp)
+            except OSError:
+                pass
+
+
+def read_folder_index(folder):
+    fp = os.path.join(folder_dir(folder), "index.json")
+    try:
+        with open(fp, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+# Conexión GitHub POR proyecto editor (doc 27, fase 4). El token nunca entra al
+# repo: vive en <app_dir>/editor_github.json (0600) y se inyecta en la URL.
+def _gh_path():
+    return os.path.join(app_dir(), "editor_github.json")
+
+
+def gh_conn_read():
+    try:
+        with open(_gh_path(), "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def gh_conn_write(data):
+    with open(_gh_path(), "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    try:
+        os.chmod(_gh_path(), 0o600)
+    except OSError:
+        pass
+
+
+def gh_conn_of(pid):
+    return gh_conn_read().get(pid or "")
+
+
+# Resuelve un proyecto por id escaneando los index.json de las carpetas del mirror.
+def project_entry(pid):
+    """(carpeta, meta {id,name,type}) del proyecto `pid`, o (None, None)."""
+    try:
+        folders_list = os.listdir(projects_dir())
+    except OSError:
+        folders_list = []
+    for folder in folders_list:
+        if not os.path.isdir(os.path.join(projects_dir(), folder)):
+            continue
+        for p in read_folder_index(folder).get("projects", []):
+            if p.get("id") == pid:
+                return folder, p
+    return None, None
+
+
+# Contexto de rutas que consume el motor del orquestador (orchestrator.py).
+def orch_ctx(pid):
+    folder, meta = project_entry(pid or "")
+    if not meta:
+        return None
+    def tree_path_of(rpid):
+        f2, m2 = project_entry(rpid)
+        return os.path.join(tree_dir(f2, m2.get("name") or rpid), "tree.json") if m2 else None
+    def sv_dir_of(rpid):
+        err, svd, _t = sv_context(rpid)
+        return None if err else svd
+    def project_meta(rpid):
+        _f, m2 = project_entry(rpid)
+        return m2
+    return {
+        "pid": pid, "app_dir": app_dir(),
+        "graph_path": os.path.join(tree_dir(folder, meta.get("name") or pid), "tree.json"),
+        "work_dir": folder_dir(folder),      # carpeta del mirror (diagramas-recurso)
+        # para los agentes CLI CONFINADOS (decisión X): sus escrituras van por el MCP
+        # del editor contra ESTE backend, o sea por editorfs con su confinamiento.
+        "local_url": f"http://{HOST}:{PORT}",
+        "local_token": get_token(),
+        "tree_path_of": tree_path_of, "sv_dir_of": sv_dir_of, "project_meta": project_meta,
+        # el watcher del mirror ya detecta los tree.json tocados (mtime → SSE a la web)
+        "notify_edit": lambda rpid: None,
+    }
+
+
+# Source Versions del modo editor (doc 27): el sv_dir vive DENTRO del directorio
+# del proyecto en la carpeta de proyectos (viaja/cae con el proyecto). El pid se
+# resuelve a (carpeta, nombre) escaneando los index.json de las carpetas.
+def sv_context(pid):
+    """(err, sv_dir, target) para las operaciones /sv del proyecto editor `pid`."""
+    target = editorfs.get_target(app_dir(), pid)
+    if not target:
+        return (400, {"error": "editor target not set"}), None, None
+    try:
+        folders = os.listdir(projects_dir())
+    except OSError:
+        folders = []
+    for folder in folders:
+        if not os.path.isdir(os.path.join(projects_dir(), folder)):
+            continue
+        for p in read_folder_index(folder).get("projects", []):
+            if p.get("id") == pid:
+                svd = os.path.join(tree_dir(folder, p.get("name") or pid), "source-versions")
+                return None, svd, target
+    return (409, {"error": "the project is not synced (missing from its folder index)", "code": "not_synced"}), None, None
+
+
+def docs_context(pid):
+    """(err, project_dir) para las operaciones /docs del proyecto `documents` `pid`.
+    Igual que sv_context: ubica el proyecto por su id en el index.json de su carpeta
+    (el mirror ya lo escribió), así el cliente NO manda rutas."""
+    if not pid:
+        return (400, {"error": "falta projectId"}), None
+    try:
+        folders = os.listdir(projects_dir())
+    except OSError:
+        folders = []
+    for folder in folders:
+        if not os.path.isdir(os.path.join(projects_dir(), folder)):
+            continue
+        for p in read_folder_index(folder).get("projects", []):
+            if p.get("id") == pid:
+                return None, tree_dir(folder, p.get("name") or pid)
+    return (409, {"error": "the project is not synced (missing from its folder index)", "code": "not_synced"}), None
+
+
+def resolve_tree_id(folder, dirname):
+    """Mapea el nombre de carpeta del proyecto → id de la web (vía index.json)."""
+    for p in read_folder_index(folder).get("projects", []):
+        if safe_name(p.get("name", "")) == dirname:
+            return p.get("id") or dirname
+    return dirname
+
+
+# ===================== Claude Code CLI =====================
+
+# ===================== selector nativo de carpeta =====================
+# El navegador no expone la ruta real del sistema; el conector sí. Abrimos un
+# diálogo nativo (tkinter askdirectory) en un SUBPROCESO (Tk no es thread-safe y
+# el server es multi-thread) y devolvemos la ruta absoluta elegida.
+# El subproceso es ESTE mismo programa en modo `--pick-dir` (ver main()). Antes era
+# `sys.executable -c "<script>"`, que solo anda con `python server.py`: en el binario
+# --onefile (sys.frozen) sys.executable ES el binario, el `-c` moría en el argparse
+# y la web recibía `cancelled` al instante sin que se abriera nada (0.33.0). Y como
+# tkinter solo aparecía dentro de ese string, PyInstaller ni lo empaquetaba: el
+# `import tkinter` de _pick_directory_dialog() tiene que ser un import de verdad.
+
+def reveal_in_explorer(path):
+    """Abre el explorador del SO en `path`."""
+    try:
+        os.makedirs(path, exist_ok=True)
+        if os.name == "nt":
+            os.startfile(path)                       # Windows
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", path])         # macOS
+        else:
+            subprocess.Popen(["xdg-open", path])     # Linux
+        return True
+    except Exception:
+        return False
+
+
+def _pick_directory_dialog(title):
+    """Modo `--pick-dir`: abre el diálogo en ESTE proceso y devuelve la ruta ('' si cancela)."""
+    import tkinter
+    import tkinter.filedialog as fd
+    r = tkinter.Tk()
+    r.withdraw()
+    try:
+        r.attributes("-topmost", True)
+    except Exception:
+        pass
+    p = fd.askdirectory(title=title)
+    r.destroy()
+    return p or ""
+
+
+def pick_directory(title="Elegí una carpeta"):
+    if getattr(sys, "frozen", False):
+        argv = [sys.executable, "--pick-dir", title]
+    else:
+        argv = [sys.executable, os.path.abspath(__file__), "--pick-dir", title]
+    # PyInstaller >= 6.9: que el hijo --onefile se desempaque solo en vez de heredar
+    # la carpeta temporal del padre.
+    env = dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT="1")
+    kw = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
+    try:
+        out = subprocess.run(argv, capture_output=True, text=True, timeout=300,
+                             encoding="utf-8", errors="replace", env=env, **kw)
+        path = (out.stdout or "").strip()
+        return path or None
+    except Exception:
+        return None
+
+
+# ===================== state mirror (watcher) =====================
+# Vigila los tree.json de todos los proyectos por mtime y empuja los cambios por
+# SSE (/state/stream). La web es un espejo en vivo. Cuando la web edita, manda
+# write-through (/state/write) y marcamos el mtime como "ya visto" para no
+# devolverle el eco. Ver doc 19 (Fase 2).
+
+STATE_LOCK = threading.Lock()
+STATE = {}            # "<folder>/<id>" -> {"mtime": float}   (último mtime visto)
+STATE_LOG = []        # [{seq, folder, id, treeJson, ts}] (cambios para el SSE)
+STATE_SEQ = 0
+STATE_LOG_MAX = 500
+
+
+def _skey(folder, name):
+    return f"{safe_name(folder)}/{safe_name(name)}"
+
+
+def _read_tree_file(folder, name):
+    fp = os.path.join(tree_dir(folder, name), "tree.json")
+    if not os.path.exists(fp):
+        return None
+    try:
+        with open(fp, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return None
+
+
+def _emit_state(folder, pid, content, name=None, is_new=False):
+    """Agrega un evento de cambio al log (asume STATE_LOCK tomado). Devuelve el seq.
+    `name`/`is_new` viajan para que la web pueda CREAR el proyecto si no lo conoce
+    (lo creó la IA/CLI en disco); ver stateMirror.applyIncoming."""
+    global STATE_SEQ
+    STATE_SEQ += 1
+    STATE_LOG.append({"seq": STATE_SEQ, "folder": folder, "id": pid, "name": name,
+                      "new": bool(is_new), "treeJson": content, "ts": time.time()})
+    if len(STATE_LOG) > STATE_LOG_MAX:
+        del STATE_LOG[: len(STATE_LOG) - STATE_LOG_MAX]
+    return STATE_SEQ
+
+
+def register_disk_project(folder, dirname, content):
+    """Un proyecto que apareció EN DISCO (lo creó la IA por el CLI local) y que la
+    web todavía no conoce: le asignamos un id y lo anotamos en el index.json de su
+    carpeta, para que el evento del watcher pueda crearlo en la web. Devuelve
+    (id, is_new). Si la carpeta no tiene index.json todavía NO inventamos nada (esa
+    carpeta no está sincronizada; lo resuelve el conflicto disco↔web al conectar)."""
+    idx = read_folder_index(folder)
+    projects = idx.get("projects")
+    if projects is None:
+        return dirname, False
+    for p in projects:
+        if safe_name(p.get("name", "")) == dirname:
+            return p.get("id") or dirname, False
+    try:
+        ptype = (json.loads(content) or {}).get("type") or "cart"
+    except Exception:
+        return dirname, False                      # tree.json a medio escribir: esperar
+    pid = "d" + secrets.token_hex(6)
+    projects.append({"id": pid, "name": dirname, "type": ptype})
+    try:
+        with open(os.path.join(folder_dir(folder), "index.json"), "w", encoding="utf-8") as fp:
+            json.dump(idx, fp, ensure_ascii=False, indent=2)
+    except OSError:
+        return dirname, False
+    return pid, True
+
+
+def iter_disk_trees():
+    """Itera (folder, treeId, fullpath_tree.json) sobre la estructura de 2 niveles."""
+    root = projects_dir()
+    if not os.path.isdir(root):
+        return
+    for fname in os.listdir(root):
+        fdir = os.path.join(root, fname)
+        if not os.path.isdir(fdir) or fname == ".claude":
+            continue
+        # saltar carpetas-legacy "planas" (un tree.json directo no es una carpeta)
+        if os.path.exists(os.path.join(fdir, "tree.json")):
+            continue
+        for tname in os.listdir(fdir):
+            fp = os.path.join(fdir, tname, "tree.json")
+            if os.path.exists(fp):
+                yield fname, tname, fp
+
+
+def watch_state(interval=0.5):
+    """Thread: detecta cambios de mtime en los tree.json (2 niveles) y los emite."""
+    while True:
+        try:
+            for folder, tname, fp in iter_disk_trees():
+                try:
+                    mtime = os.path.getmtime(fp)
+                except OSError:
+                    continue
+                key = f"{folder}/{tname}"          # carpeta del proyecto (nombre)
+                with STATE_LOCK:
+                    prev = STATE.get(key)
+                    if prev is None or prev["mtime"] != mtime:
+                        content = _read_tree_file(folder, tname)
+                        seq = (prev or {}).get("seq", 0)
+                        if content is not None:
+                            # el evento usa el ID de la web (resuelto vía index.json).
+                            # Si el proyecto NO está en el index, lo creó la IA en
+                            # disco: le damos id y lo marcamos `new` para que la web
+                            # lo cree en su lista (si no, el manifiesto lo podaría).
+                            pid, is_new = register_disk_project(folder, tname, content)
+                            seq = _emit_state(folder, pid, content, name=tname, is_new=is_new)
+                        STATE[key] = {"mtime": mtime, "seq": seq}
+        except Exception:
+            pass
+        time.sleep(interval)
+
+
+# ===================== HTTP =====================
+
+
+# ===================== LA APP WEB SERVIDA POR ACÁ (doc 37 §F13) =====================
+# El backend puede servir la SPA además de su API. Cuando lo hace, la web y el backend
+# comparten origen (http://127.0.0.1:8765) y eso ES el flag de "modo desktop": la web
+# se da cuenta sola, sin configurar nada, y se ahorra el botón Conectar y el prompt del
+# token (que va inyectado en el HTML, igual que en el panel).
+#
+# De dónde salen los archivos, en orden:
+#   1. DMN_WEB_DIR — un checkout del front (para desarrollar con los dos repos al lado).
+#   2. el directorio `web/` que PyInstaller empaqueta dentro del binario (sys._MEIPASS).
+#   3. nada: este repo es PÚBLICO y el front va OFUSCADO, así que no vive acá. Sin
+#      front, `/` sigue sirviendo el panel de control, como siempre.
+def web_dir():
+    d = os.environ.get("DMN_WEB_DIR")
+    if d and os.path.isdir(d):
+        return os.path.realpath(d)
+    bundled = os.path.join(getattr(sys, "_MEIPASS", ""), "web") if getattr(sys, "_MEIPASS", None) else None
+    if bundled and os.path.isdir(bundled):
+        return bundled
+    return None
+
+
+# Solo estas raíces se sirven. Una lista blanca y no "todo lo que cuelgue del dir"
+# porque el front convive con cosas que NO son de la web (node_modules, .git, el
+# repo entero si DMN_WEB_DIR apunta al checkout).
+WEB_ROOTS = ("app", "dist", "vendor", "docs", "legal", "brand")
+WEB_TYPES = {
+    ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+    ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml",
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+    ".webp": "image/webp", ".ico": "image/x-icon", ".woff": "font/woff",
+    ".woff2": "font/woff2", ".ttf": "font/ttf", ".map": "application/json",
+    ".md": "text/markdown; charset=utf-8", ".wasm": "application/wasm",
+}
+
+
+def web_file(rel):
+    """Ruta absoluta del archivo del front, o None si no corresponde servirlo.
+    Confina: la ruta resuelta tiene que caer DENTRO de una de las raíces blancas."""
+    base = web_dir()
+    if not base or not rel:
+        return None
+    top = rel.split("/", 1)[0]
+    if top not in WEB_ROOTS:
+        return None
+    full = os.path.realpath(os.path.join(base, rel))
+    root = os.path.realpath(os.path.join(base, top))
+    if full != root and not full.startswith(root + os.sep):
+        return None
+    return full if os.path.isfile(full) else None
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = f"{NAME}/{VERSION}"
+
+    # --- helpers ---------------------------------------------------------
+    def _cors(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-DiagraMind-Token")
+
+    # --- auth: token en ?token= o header X-DiagraMind-Token ---
+    def _req_token(self):
+        t = parse_qs(urlparse(self.path).query).get("token", [None])[0]
+        if not t:
+            t = self.headers.get("X-DiagraMind-Token")
+        return t or ""
+
+    def _auth_ok(self):
+        return hmac.compare_digest(self._req_token(), get_token())
+
+    def _json(self, code, payload):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self._cors()
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _sv(self, fn):
+        """Corre una operación de sourcever y traduce SvError → HTTP."""
+        try:
+            self._json(200, fn())
+        except sourcever.SvError as e:
+            self._json(e.code, {"error": e.msg})
+
+    def _gh(self, fn):
+        """Corre una operación de svgit y traduce GitError/SvError → HTTP."""
+        try:
+            self._json(200, fn())
+        except svgit.GitError as e:
+            self._json(e.code, {"error": e.msg})
+        except sourcever.SvError as e:
+            self._json(e.code, {"error": e.msg})
+
+    def _orch_hook(self, path):
+        """POST /orch/hook/<hookId> — disparo externo (decisión V). Body JSON:
+        {payload?, callback?, token?}; token también por header X-Hook-Token o
+        ?token=. Responde AL INSTANTE (runId o posición en la cola)."""
+        hook_id = path.split("/")[3] if len(path.split("/")) > 3 else ""
+        body = self._read_json() or {}
+        token = (self.headers.get("X-Hook-Token")
+                 or parse_qs(urlparse(self.path).query).get("token", [None])[0]
+                 or body.get("token") or "")
+        payload = body.get("payload")
+        if payload is None:
+            payload = {k: v for k, v in body.items() if k not in ("token", "callback")}
+        pid = orchestrator.hook_resolve(app_dir(), hook_id)
+        if not pid:
+            self._json(404, {"error": "unknown hook"})
+            return
+        ctx = orch_ctx(pid)
+        if not ctx:
+            self._json(409, {"error": "the orchestrator is not synced", "code": "not_synced"})
+            return
+        try:
+            self._json(200, orchestrator.hook_fire(ctx, hook_id, token, payload,
+                                                   body.get("callback")))
+        except orchestrator.OrchError as e:
+            self._json(e.code, {"error": e.msg})
+
+    def _orch(self, pid, fn):
+        """Resuelve el ctx del orquestador y corre `fn(ctx)` traduciendo OrchError."""
+        ctx = orch_ctx(pid)
+        if not ctx:
+            self._json(409, {"error": "the orchestrator is not synced (missing from the mirror)",
+                             "code": "not_synced"})
+            return
+        try:
+            self._json(200, fn(ctx))
+        except orchestrator.OrchError as e:
+            self._json(e.code, {"error": e.msg})
+        except sourcever.SvError as e:
+            self._json(e.code, {"error": e.msg})
+
+    def _orch_stream(self, pid, since):
+        """SSE de eventos del run del orquestador (para pintar el canvas en vivo)."""
+        ctx = orch_ctx(pid)
+        if not ctx:
+            self._json(409, {"error": "the orchestrator is not synced", "code": "not_synced"})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self._cors()
+        self.end_headers()
+        sent = since
+        last_beat = time.time()
+        try:
+            while True:
+                evs, sent, status = orchestrator.events_since(ctx, sent)
+                for ev in evs:
+                    self.wfile.write(f"data: {json.dumps(ev, ensure_ascii=False)}\n\n".encode("utf-8"))
+                    self.wfile.flush()
+                if status in ("done", "error", "killed", "none") and not evs:
+                    self.wfile.write(b"data: {\"kind\": \"end\"}\n\n")
+                    self.wfile.flush()
+                    break
+                if time.time() - last_beat > 15:
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                    last_beat = time.time()
+                time.sleep(0.25)
+        except (ConnectionError, OSError):
+            pass
+
+    def _read_json(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        if not length:
+            return {}
+        raw = self.rfile.read(length)
+        try:
+            return json.loads(raw.decode("utf-8"))
+        except Exception:
+            return {}
+
+    def _read_raw(self):
+        """Cuerpo binario crudo (blobs del modo documents: sin base64, 33% menos)."""
+        length = int(self.headers.get("Content-Length") or 0)
+        return self.rfile.read(length) if length else b""
+
+    def _bin(self, data):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self._cors()
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _html(self, body):
+        """La página del panel. A propósito SIN cabeceras CORS: lleva el token
+        inyectado, y sin Access-Control-Allow-Origin el navegador no deja que otra
+        web lea la respuesta. frame-ancestors/X-Frame-Options evitan que la metan en
+        un iframe para robarle clics a los botones (detener, regenerar)."""
+        data = body.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'none'")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _docs(self, pid, fn):
+        """Resuelve el dir del proyecto documents y corre la operación."""
+        err, pdir = docs_context(pid)
+        if err:
+            self._json(*err)
+            return None
+        return fn(pdir)
+
+    # --- verbos ----------------------------------------------------------
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._cors()
+        self.end_headers()
+
+
+    def _static(self, full):
+        """Un archivo del front. Con CORS NO: mismo origen, no hace falta."""
+        ext = os.path.splitext(full)[1].lower()
+        try:
+            with open(full, "rb") as f:
+                data = f.read()
+        except OSError:
+            self._json(404, {"error": "not found"})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", WEB_TYPES.get(ext, "application/octet-stream"))
+        # no-store a propósito: el binario se actualiza y una copia vieja en el cache
+        # del navegador es el bug más difícil de explicar que existe.
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _app_page(self):
+        """El index.html del front con el TOKEN inyectado.
+
+        Esto es lo que convierte a la web en "modo desktop": viene del mismo origen
+        que la API y ya trae la credencial, así que no hay botón Conectar ni prompt
+        de contraseña. El token se mete en un <script> antes que nada, para que el
+        bundle lo encuentre apenas arranca."""
+        base = web_dir()
+        try:
+            with open(os.path.join(base, "index.html"), "r", encoding="utf-8") as f:
+                html = f.read()
+        except OSError:
+            self._html(panel_ui.page(get_token()))
+            return
+        inject = ('<script>window.__DM_DESKTOP__=true;'
+                  'window.__DM_TOKEN__=%s;</script>' % json.dumps(get_token()))
+        if "<head>" in html:
+            html = html.replace("<head>", "<head>" + inject, 1)
+        else:
+            html = inject + html
+        self._html(html)
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+        q = parse_qs(parsed.query)
+
+        # Panel de control (doc 18 §Panel): la página se sirve SIN auth porque ES
+        # la que trae el token adentro; queda protegida por el loopback + la falta
+        # de CORS (ver _html). Todo lo que hace después va con token, como la web.
+        if path in ("/", "/index.html") and web_dir():
+            self._app_page()
+            return
+        if path in ("/", "/panel", "/index.html"):
+            self._html(panel_ui.page(get_token()))
+            return
+        if web_dir() and path.startswith("/"):
+            f = web_file(path.lstrip("/"))
+            if f:
+                self._static(f)
+                return
+
+        if path == "/health":
+            # /health es PÚBLICO (la web lo usa para detectar el server). No
+            # devuelve el token; solo dice que se requiere y si el que mandaron
+            # (si mandaron alguno) es válido.
+            clis = []
+            for a in CLIS.values():
+                b = a.find()
+                clis.append({"key": a.key, "label": a.label, "available": bool(b),
+                             "version": a.version(b) if b else None, "resume": a.supports_resume})
+            cb = find_claude()
+            self._json(200, {
+                "status": "ok", "name": NAME, "version": VERSION,
+                "auth": True, "authOk": self._auth_ok(),
+                "clis": clis,
+                # compat: campo claude suelto (clientes viejos)
+                "claude": {"available": bool(cb),
+                           "version": claude_version(cb) if cb else None},
+            })
+            return
+
+        if not self._auth_ok():
+            self._json(401, {"error": "unauthorized"})
+            return
+
+        if path == "/projects/tree":
+            self._get_tree(q.get("name", q.get("id", [None]))[0], q.get("folder", [None])[0])
+        elif path == "/chat/stream":
+            self._stream(q.get("runId", [None])[0])
+        elif path == "/state":
+            self._state_full()
+        elif path == "/state/stream":
+            self._state_stream(q.get("since", [None])[0])
+        elif path == "/folders/pick":
+            self._folders_pick(q.get("title", ["Elegí una carpeta"])[0])
+        elif path == "/folders/read":
+            self._folders_read(q.get("path", [None])[0])
+        elif path == "/config":
+            self._json(200, {"root": projects_dir(), "base": app_dir()})
+        # --- panel de control (doc 18) ---
+        elif path == "/panel/status":
+            self._json(200, panel.status(
+                name=NAME, version=VERSION, port=PORT, token=get_token(),
+                root=projects_dir(), base=app_dir(), token_file=token_path(),
+                auto_stop=AUTO_STOP))
+        elif path == "/panel/install/stream":
+            self._stream(q.get("runId", [None])[0])   # mismo SSE de runs que el chat
+        elif path == "/panel/alive":
+            self._panel_alive()
+        # --- modo editor (doc 27; contrato unificado con el conector externo) ---
+        elif path == "/editor/target":
+            self._json(200, {"path": editorfs.get_target(app_dir(), q.get("projectId", [None])[0])})
+        elif path == "/fs/tree":
+            self._json(*editorfs.fs_tree(app_dir(), q.get("projectId", [None])[0], q.get("dir", [""])[0]))
+        elif path == "/fs/read":
+            self._json(*editorfs.fs_read(app_dir(), q.get("projectId", [None])[0], q.get("path", [None])[0]))
+        elif path == "/fs/grep":
+            self._json(*editorfs.fs_grep(app_dir(), q.get("projectId", [None])[0],
+                                         q.get("q", [None])[0], q.get("glob", [""])[0]))
+        # --- source versions del modo editor (doc 27, fase 4) ---
+        elif path == "/sv/list":
+            err, svd, _t = sv_context(q.get("projectId", [None])[0])
+            if err:
+                self._json(*err)
+            else:
+                self._json(200, {"versions": sourcever.sv_list(svd)})
+        elif path == "/sv/status":
+            err, svd, target = sv_context(q.get("projectId", [None])[0])
+            if err:
+                self._json(*err)
+            else:
+                self._sv(lambda: sourcever.sv_status(svd, target))
+        elif path == "/sv/diff":
+            err, svd, target = sv_context(q.get("projectId", [None])[0])
+            if err:
+                self._json(*err)
+            else:
+                self._sv(lambda: sourcever.sv_diff(svd, target, q.get("id", [None])[0],
+                                                   q.get("path", [None])[0]))
+        # --- GitHub por proyecto editor (doc 27, fase 4) ---
+        elif path == "/svgit/status":
+            pid = q.get("projectId", [None])[0]
+            target = editorfs.get_target(app_dir(), pid)
+            if not target:
+                self._json(400, {"error": "editor target not set"})
+            else:
+                self._gh(lambda: svgit.gh_status(gh_conn_of(pid), target))
+        elif path == "/svgit/log":
+            pid = q.get("projectId", [None])[0]
+            target = editorfs.get_target(app_dir(), pid)
+            if not target:
+                self._json(400, {"error": "editor target not set"})
+            else:
+                self._gh(lambda: svgit.gh_log(gh_conn_of(pid), target,
+                                              int(q.get("n", ["20"])[0])))
+        # --- modo documents (doc 30 fase 3): blobs por hash ---
+        elif path == "/docs/list":
+            self._docs(q.get("projectId", [None])[0],
+                       lambda pdir: self._json(*docsfs.docs_list(pdir)))
+        elif path == "/docs/get":
+            def _get(pdir):
+                code, body = docsfs.docs_get(pdir, q.get("hash", [None])[0])
+                if code == 200:
+                    self._bin(body["bytes"])       # bytes crudos (sin base64)
+                else:
+                    self._json(code, body)
+            self._docs(q.get("projectId", [None])[0], _get)
+        # --- IA Orchestrator (doc 28, fase 2) ---
+        elif path == "/orch/state":
+            self._orch(q.get("projectId", [None])[0], lambda ctx: orchestrator.get_state(ctx))
+        elif path == "/orch/stream":
+            self._orch_stream(q.get("projectId", [None])[0], int(q.get("since", ["0"])[0]))
+        elif path == "/orch/chatlog":
+            self._orch(q.get("projectId", [None])[0],
+                       lambda ctx: orchestrator.chat_read(ctx, int(q.get("nodeId", ["0"])[0])))
+        elif path == "/orch/mem":
+            def _mem(ctx):
+                nid = int(q.get("nodeId", ["0"])[0])
+                return {"entries": orchestrator.mem_read(ctx, nid),
+                        "chars": orchestrator.mem_chars(ctx, nid)}
+            self._orch(q.get("projectId", [None])[0], _mem)
+        elif path == "/orch/keys":
+            self._orch(q.get("projectId", [None])[0], lambda ctx: orchestrator.keys_status(ctx))
+        elif path == "/orch/hookinfo":
+            def _hi(ctx):
+                info = orchestrator.hook_info(ctx, int(q.get("nodeId", ["0"])[0]))
+                if info.get("hookId"):
+                    info["url"] = f"http://127.0.0.1:{self.server.server_address[1]}/orch/hook/{info['hookId']}"
+                return info
+            self._orch(q.get("projectId", [None])[0], _hi)
+        elif path == "/orch/runs":
+            self._orch(q.get("projectId", [None])[0], lambda ctx: orchestrator.runs_list(ctx))
+        elif path == "/orch/rundetail":
+            self._orch(q.get("projectId", [None])[0],
+                       lambda ctx: orchestrator.run_detail(ctx, q.get("runId", [None])[0]))
+        elif path == "/orch/inspect":
+            # radiografía de un agente: el system y las tools EXACTOS que recibiría
+            # si girara ahora + lo que se le mandó (botones Context / Tools)
+            self._orch(q.get("projectId", [None])[0],
+                       lambda ctx: orchestrator.inspect_node(ctx, int(q.get("nodeId", ["0"])[0])))
+        else:
+            self._json(404, {"error": "not found", "path": path})
+
+    def do_POST(self):
+        path = urlparse(self.path).path
+        if path.startswith("/orch/hook/"):
+            # PÚBLICO (doc 28 decisión V): lo autentica el TOKEN PROPIO del hook
+            # (se lo diste al sistema externo), no el token local de la web.
+            self._orch_hook(path)
+            return
+        if not self._auth_ok():
+            self._json(401, {"error": "unauthorized"})
+            return
+        if path == "/projects/sync":
+            self._sync(self._read_json())
+        elif path == "/files/upload":
+            self._files_upload(self._read_json())
+        elif path == "/folders/reveal":
+            self._folders_reveal(self._read_json())
+        elif path == "/config/root":
+            self._config_root(self._read_json())
+        # --- panel de control (doc 18) ---
+        elif path == "/panel/install":
+            self._panel_install(self._read_json())
+        elif path == "/panel/token/regenerate":
+            self._json(200, {"token": regenerate_token()})
+        elif path == "/panel/shutdown":
+            self._panel_shutdown()
+        elif path == "/projects/manifest":
+            self._manifest(self._read_json())
+        elif path == "/state/write":
+            self._state_write(self._read_json())
+        elif path == "/chat":
+            self._chat(self._read_json())
+        elif path == "/chat/permission/ask":
+            self._perm_ask(self._read_json())
+        elif path == "/chat/permission/answer":
+            self._perm_answer(self._read_json())
+        elif path == "/chat/cancel":
+            self._cancel(parse_qs(urlparse(self.path).query).get("runId", [None])[0])
+        elif path == "/fetch":
+            self._proxy_fetch(self._read_json())
+        # --- modo editor (doc 27) ---
+        elif path == "/editor/target":
+            b = self._read_json()
+            self._json(*editorfs.set_target(app_dir(), b.get("projectId"), b.get("path")))
+        elif path == "/fs/write":
+            b = self._read_json()
+            self._json(*editorfs.fs_write(app_dir(), b.get("projectId"), b.get("path"), b.get("content")))
+        elif path == "/fs/edit":
+            # reemplazo de texto exacto: la vía barata de cambiar unas líneas (la usan
+            # el modo editor, los agentes API y el MCP de los CLI confinados)
+            b = self._read_json()
+            self._json(*editorfs.fs_edit(app_dir(), b.get("projectId"), b.get("path"),
+                                         b.get("old"), b.get("new") or "", bool(b.get("all"))))
+        elif path == "/fs/mkdir":
+            b = self._read_json()
+            self._json(*editorfs.fs_mkdir(app_dir(), b.get("projectId"), b.get("path")))
+        elif path == "/fs/rename":
+            b = self._read_json()
+            self._json(*editorfs.fs_rename(app_dir(), b.get("projectId"), b.get("from"), b.get("to")))
+        elif path == "/fs/delete":
+            b = self._read_json()
+            self._json(*editorfs.fs_delete(app_dir(), b.get("projectId"), b.get("path")))
+        elif path == "/fs/exec":
+            b = self._read_json()
+            self._json(*editorfs.fs_exec(app_dir(), b.get("projectId"), b.get("cmd")))
+        # --- source versions del modo editor (doc 27, fase 4) ---
+        elif path == "/sv/save":
+            b = self._read_json()
+            err, svd, target = sv_context(b.get("projectId"))
+            if err:
+                self._json(*err)
+            else:
+                self._sv(lambda: sourcever.sv_save(svd, target, b.get("author"), b.get("note")))
+        elif path == "/sv/restore":
+            b = self._read_json()
+            err, svd, target = sv_context(b.get("projectId"))
+            if err:
+                self._json(*err)
+            else:
+                self._sv(lambda: sourcever.sv_restore(svd, target, b.get("id"), b.get("author")))
+        # --- GitHub por proyecto editor (doc 27, fase 4) ---
+        elif path == "/svgit/connect":
+            b = self._read_json()
+            pid = b.get("projectId")
+            if not pid or not b.get("remoteUrl"):
+                self._json(400, {"error": "faltan projectId o remoteUrl"})
+                return
+            target = editorfs.get_target(app_dir(), pid)
+            if not target:
+                self._json(400, {"error": "editor target not set"})
+                return
+            # El remoto se VERIFICA antes de guardar: conectar a un repo que no
+            # existe dejaba la UI diciendo "conectado" y el error aparecía recién
+            # en el primer push.
+            remote = b["remoteUrl"].strip()
+            token = (b.get("token") or "").strip()
+            branch = (b.get("branch") or "main").strip() or "main"
+            try:
+                chk = svgit.gh_verify(remote, token, branch, target)
+            except svgit.GitError as e:
+                self._json(e.code, {"error": e.msg})
+                return
+            data = gh_conn_read()
+            data[pid] = {"remoteUrl": remote, "token": token, "branch": branch}
+            gh_conn_write(data)
+            out = svgit.gh_status(data[pid], target)
+            out["branchExists"] = chk["branchExists"]
+            self._json(200, out)
+        elif path == "/svgit/disconnect":
+            b = self._read_json()
+            data = gh_conn_read()
+            data.pop(b.get("projectId") or "", None)
+            gh_conn_write(data)
+            self._json(200, {"ok": True})
+        elif path == "/svgit/push":
+            b = self._read_json()
+            pid = b.get("projectId")
+            target = editorfs.get_target(app_dir(), pid)
+            if not target:
+                self._json(400, {"error": "editor target not set"})
+            else:
+                by_ai = (b.get("author") or "") == "IA"
+                self._gh(lambda: svgit.gh_push(gh_conn_of(pid), target, b.get("message"),
+                                               "IA (DiagraMinder)" if by_ai else "usuario", by_ai))
+        elif path == "/svgit/pull":
+            b = self._read_json()
+            err, svd, target = sv_context(b.get("projectId"))
+            if err:
+                self._json(*err)
+            else:
+                self._gh(lambda: svgit.gh_pull(gh_conn_of(b.get("projectId")), target,
+                                               b.get("ref"), svd, b.get("author") or "usuario"))
+        # --- modo documents (doc 30 fase 3) ---
+        elif path == "/docs/put":
+            # cuerpo = BYTES crudos del blob; el hash viaja en la query y se
+            # VERIFICA contra el sha256 real antes de escribir (decisión D)
+            q = parse_qs(urlparse(self.path).query)
+            data = self._read_raw()
+            self._docs(q.get("projectId", [None])[0],
+                       lambda pdir: self._json(*docsfs.docs_put(pdir, q.get("hash", [None])[0], data)))
+        elif path == "/docs/delete":
+            b = self._read_json()
+            self._docs(b.get("projectId"),
+                       lambda pdir: self._json(*docsfs.docs_delete(pdir, b.get("hash"))))
+        elif path == "/docs/gc":
+            # la web manda los hashes del manifiesto; el disco borra lo que sobra.
+            # Si además manda `names` (nombre+carpeta virtual de cada doc), se
+            # regenera la vista legible `documents/by-name/` (doc 30 fase 5).
+            b = self._read_json()
+            def _gc(pdir):
+                code, body = docsfs.docs_gc(pdir, b.get("keep"))
+                if code == 200 and isinstance(b.get("names"), list):
+                    body["linked"] = docsfs.docs_link_names(pdir, b["names"])
+                self._json(code, body)
+            self._docs(b.get("projectId"), _gc)
+        # --- IA Orchestrator (doc 28, fase 2) ---
+        elif path == "/orch/run":
+            b = self._read_json()
+            def _run(ctx):
+                graph = orchestrator.load_graph(ctx)
+                task = graph["nodos"].get(int(b.get("taskNodeId") or 0))
+                if not task or task.get("type") != "agTask":
+                    raise orchestrator.OrchError(400, "taskNodeId no es un nodo tarea")
+                edge = next((f for f in graph["flechas"]
+                             if f.get("kind") == "task" and int(f.get("fromId", -1)) == int(task["id"])), None)
+                if not edge:
+                    raise orchestrator.OrchError(400, "la tarea no está conectada a un agente (flecha task)")
+                enunciado = (task.get("data") or {}).get("enunciado") or ""
+                texto = f"TAREA «{task.get('titulo') or ''}»: {enunciado}".strip()
+                run = orchestrator.start_run(ctx, "task", int(edge["toId"]), texto,
+                                             b.get("apiKeys") or {}, b.get("maxTurns"))
+                return {"runId": run["id"]}
+            self._orch(b.get("projectId"), _run)
+        elif path == "/orch/chat":
+            b = self._read_json()
+            self._orch(b.get("projectId"),
+                       lambda ctx: orchestrator.chat_message(ctx, int(b.get("nodeId") or 0),
+                                                             b.get("message") or "",
+                                                             b.get("apiKeys") or {}, b.get("maxTurns")))
+        elif path == "/orch/answer":
+            b = self._read_json()
+            self._orch(b.get("projectId"),
+                       lambda ctx: orchestrator.answer(ctx, b.get("text") or "", b.get("nodeId")))
+        elif path == "/orch/pause":
+            b = self._read_json()
+            self._orch(b.get("projectId"), lambda ctx: orchestrator.pause(ctx))
+        elif path == "/orch/resume":
+            # pausado, o muerto en error con trabajo pendiente (fase 13): `addTurns`
+            # estira el presupuesto si justamente fue eso lo que lo mató
+            b = self._read_json()
+            self._orch(b.get("projectId"), lambda ctx: orchestrator.resume(ctx, b.get("addTurns")))
+        elif path == "/orch/discard":
+            b = self._read_json()
+            self._orch(b.get("projectId"), lambda ctx: orchestrator.discard(ctx))
+        elif path == "/orch/rundelete":
+            # borrar UNA fila del historial de runs (la cruz del modal Runs)
+            b = self._read_json()
+            self._orch(b.get("projectId"),
+                       lambda ctx: orchestrator.run_delete(ctx, b.get("runId")))
+        elif path == "/orch/kill":
+            b = self._read_json()
+            self._orch(b.get("projectId"), lambda ctx: orchestrator.kill(ctx))
+        elif path == "/orch/keys":
+            b = self._read_json()
+            def _keys(ctx):
+                if b.get("cred"):                 # alta/edición de una credencial con nombre
+                    return orchestrator.cred_write(ctx, b["cred"])
+                if b.get("deleteCredId"):
+                    return orchestrator.cred_delete(ctx, b["deleteCredId"])
+                return orchestrator.keys_write(ctx, b.get("keys") or {})
+            self._orch(b.get("projectId"), _keys)
+        elif path == "/orch/hookreg":
+            b = self._read_json()
+            def _hr(ctx):
+                info = orchestrator.hook_register(ctx, int(b.get("nodeId") or 0))
+                info["url"] = f"http://127.0.0.1:{self.server.server_address[1]}/orch/hook/{info['hookId']}"
+                return info
+            self._orch(b.get("projectId"), _hr)
+        elif path == "/orch/memclear":
+            b = self._read_json()
+            def _mc(ctx):
+                orchestrator.mem_clear(ctx, int(b.get("nodeId") or 0))
+                return {"ok": True}
+            self._orch(b.get("projectId"), _mc)
+        elif path == "/orch/chatclear":
+            b = self._read_json()
+            self._orch(b.get("projectId"),
+                       lambda ctx: orchestrator.chat_clear(ctx, int(b.get("nodeId") or 0)))
+        else:
+            self._json(404, {"error": "not found", "path": path})
+
+    # --- endpoints -------------------------------------------------------
+    def _sync(self, body):
+        folder = body.get("folder") or "Local"
+        name = body.get("name") or body.get("id")   # carpeta del proyecto = su NOMBRE
+        tree_json = body.get("treeJson")
+        if not name or tree_json is None:
+            self._json(400, {"error": "faltan name/id o treeJson"})
+            return
+        tdir = tree_dir(folder, name)             # <root>/<carpeta>/<NombreProyecto>
+        os.makedirs(tdir, exist_ok=True)
+        text = tree_json if isinstance(tree_json, str) else json.dumps(tree_json, ensure_ascii=False, indent=2)
+        fp = os.path.join(tdir, "tree.json")
+        with open(fp, "w", encoding="utf-8") as f:
+            f.write(text)
+        install_skills(folder_dir(folder))        # skills a nivel carpeta (cwd del chat)
+        try:                                       # anti-eco: mtime ya visto
+            with STATE_LOCK:
+                key = _skey(folder, name)
+                STATE[key] = {"mtime": os.path.getmtime(fp),
+                              "seq": STATE.get(key, {}).get("seq", 0)}
+        except OSError:
+            pass
+        self._json(200, {"ok": True, "path": tdir})
+
+    def _files_upload(self, body):
+        """Recibe adjuntos del chat (base64) y los guarda en el tempFiles/ del
+        proyecto. Devuelve las rutas RELATIVAS a la carpeta (cwd del chat) para que
+        la web se las pase a Claude. Los archivos viven como mucho TEMP_TTL_DAYS días."""
+        folder = body.get("folder") or "Local"
+        name = body.get("name") or body.get("id")
+        files = body.get("files")
+        if not name or not isinstance(files, list):
+            self._json(400, {"error": "faltan name o files"})
+            return
+        tmp = temp_dir(folder, name)
+        os.makedirs(tmp, exist_ok=True)
+        saved = []
+        for f in files:
+            try:
+                data = base64.b64decode(f.get("dataB64") or "")
+            except Exception:
+                continue
+            fname = safe_file_name(f.get("name") or "archivo")
+            dest = os.path.join(tmp, fname)
+            if os.path.exists(dest):                  # no pisar uno previo del mismo nombre
+                stem, ext = os.path.splitext(fname)
+                fname = f"{stem}-{uuid.uuid4().hex[:6]}{ext}"
+                dest = os.path.join(tmp, fname)
+            with open(dest, "wb") as out:
+                out.write(data)
+            rel = f"{safe_name(name)}/{TEMP_DIRNAME}/{fname}"   # relativo al cwd (la carpeta)
+            saved.append({"name": f.get("name"), "path": rel, "bytes": len(data)})
+        sweep_temp_files()                            # de paso, barrer los vencidos
+        self._json(200, {"ok": True, "files": saved, "ttlDays": TEMP_TTL_DAYS})
+
+    def _manifest(self, body):
+        """Escribe el índice por carpeta (<carpeta>/index.json) + el índice de
+        carpetas (<root>/folders.json), y poda lo que la web ya no tiene. La web lo
+        manda con {folders:[{name, projects:[{id,name,type}]}], focusedFolder, focusedId}."""
+        folders = body.get("folders")
+        if folders is None:
+            self._json(400, {"error": "falta folders"})
+            return
+        root = projects_dir()
+        os.makedirs(root, exist_ok=True)
+        focused_folder = body.get("focusedFolder")
+        keep_folders = set()
+        for f in folders:
+            fname = f.get("name") or "Local"
+            keep_folders.add(safe_name(fname))
+            fdir = folder_dir(fname)
+            os.makedirs(fdir, exist_ok=True)
+            projects = f.get("projects") or []
+            manifest = {
+                "folder": fname,
+                "projects": projects,
+                "focusedId": body.get("focusedId") if fname == focused_folder else None,
+                "note": "Cada proyecto de ESTA carpeta está en ./<name>/tree.json (por su NOMBRE).",
+            }
+            with open(os.path.join(fdir, "index.json"), "w", encoding="utf-8") as fp:
+                json.dump(manifest, fp, ensure_ascii=False, indent=2)
+            install_skills(fdir)
+            # podar árboles que la carpeta ya no tiene (los dirs son NOMBRES)
+            keep_t = {safe_name(p.get("name")) for p in projects if p.get("name")}
+            for tname in os.listdir(fdir):
+                full = os.path.join(fdir, tname)
+                if tname in (".claude", "index.json") or not os.path.isdir(full):
+                    continue
+                if tname not in keep_t and os.path.exists(os.path.join(full, "tree.json")):
+                    try:
+                        shutil.rmtree(full)
+                        with STATE_LOCK:
+                            STATE.pop(f"{safe_name(fname)}/{tname}", None)
+                    except OSError:
+                        pass
+
+        with open(os.path.join(root, "folders.json"), "w", encoding="utf-8") as fp:
+            json.dump({"folders": [{"name": f.get("name")} for f in folders],
+                       "focusedFolder": focused_folder}, fp, ensure_ascii=False, indent=2)
+
+        # podar carpetas que la web ya no tiene. SOLO tocamos dirs que "parecen
+        # nuestros" (tienen index.json o un tree.json directo/legacy) para no borrar
+        # nada ajeno si la raíz es un dir compartido.
+        pruned = []
+        for name in os.listdir(root):
+            full = os.path.join(root, name)
+            if not os.path.isdir(full) or name == ".claude" or name in keep_folders:
+                continue
+            looks_ours = (os.path.exists(os.path.join(full, "index.json"))
+                          or os.path.exists(os.path.join(full, "tree.json")))
+            if looks_ours:
+                try:
+                    shutil.rmtree(full)
+                    pruned.append(name)
+                except OSError:
+                    pass
+        if pruned:
+            print(f"[manifest] podadas {len(pruned)} carpetas huérfanas: {', '.join(pruned)}")
+        self._json(200, {"ok": True, "pruned": pruned})
+
+    def _get_tree(self, name, folder):
+        if not name:
+            self._json(400, {"error": "falta name"})
+            return
+        fp = os.path.join(tree_dir(folder or "Local", name), "tree.json")
+        if not os.path.exists(fp):
+            self._json(404, {"error": "no hay tree.json para ese proyecto"})
+            return
+        with open(fp, "r", encoding="utf-8") as f:
+            self._json(200, {"treeJson": f.read()})
+
+    # --- config (ruta raíz donde el conector guarda todas las carpetas) ---
+    def _config_root(self, body):
+        path = (body.get("path") or "").strip()
+        if not path:
+            self._json(400, {"error": "falta path"})
+            return
+        set_root(path)
+        self._json(200, {"root": projects_dir()})
+
+    # --- carpetas (abrir en el explorador + selector + lectura) ---
+    def _folders_reveal(self, body):
+        """Abre el explorador del SO en la carpeta (o en la raíz si no se da)."""
+        folder = body.get("folder")
+        path = folder_dir(folder) if folder else projects_dir()
+        ok = reveal_in_explorer(path)
+        self._json(200, {"ok": ok, "path": path})
+
+    # --- panel de control (doc 18) -------------------------------------
+    def _panel_install(self, data):
+        """Instalación rápida de un CLI (npm i -g). Devuelve el runId: la salida
+        se lee en vivo por /panel/install/stream (el SSE de runs, igual que el chat)."""
+        key = (data or {}).get("cli")
+        if key not in panel.NPM_PKG:
+            self._json(400, {"error": f"CLI desconocido: {key}"})
+            return
+        run = panel.install_cli(key)
+        self._json(200, {"runId": run["id"]})
+
+    def _panel_alive(self):
+        """SSE de presencia del panel: vive mientras la ventana esté abierta. Al
+        cerrarse, el socket se cae y (si arrancamos con panel) apagamos el backend."""
+        global PANELS
+        self.close_connection = True
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        with PANELS_LOCK:
+            PANELS += 1
+        try:
+            while True:
+                self.wfile.write(b": ping\n\n")
+                self.wfile.flush()
+                time.sleep(3)
+        except (ConnectionError, OSError):
+            pass
+        finally:
+            with PANELS_LOCK:
+                PANELS -= 1
+                empty = PANELS == 0
+            if AUTO_STOP and empty:
+                threading.Thread(target=_panel_gone, daemon=True).start()
+
+    def _panel_shutdown(self):
+        """Botón «Detener» del panel: contestamos y recién ahí nos morimos."""
+        self._json(200, {"ok": True})
+        try:
+            self.wfile.flush()
+        except Exception:
+            pass
+        threading.Thread(target=lambda: (time.sleep(0.3), os._exit(0)), daemon=True).start()
+
+    def _folders_pick(self, title):
+        """Abre el diálogo nativo y devuelve la ruta elegida (o cancelado)."""
+        path = pick_directory(title or "Elegí una carpeta")
+        if not path:
+            self._json(200, {"cancelled": True})
+            return
+        self._json(200, {"path": path})
+
+    def _folders_read(self, path):
+        """Lee los árboles (<path>/<id>/tree.json) de una carpeta del sistema."""
+        if not path or not os.path.isdir(path):
+            self._json(400, {"error": "invalid path"})
+            return
+        projects = []
+        for name in sorted(os.listdir(path)):
+            fp = os.path.join(path, name, "tree.json")
+            if os.path.isfile(fp):
+                try:
+                    with open(fp, "r", encoding="utf-8") as f:
+                        projects.append({"id": name, "name": name, "treeJson": f.read()})
+                except Exception:
+                    pass
+        self._json(200, {"path": path, "projects": projects})
+
+    # --- state mirror ---
+    def _state_full(self):
+        """Snapshot completo: carpetas → proyectos en disco + seq actual."""
+        by_folder = {}
+        for folder, tname, fp in iter_disk_trees():
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    content = f.read()
+            except Exception:
+                continue
+            rid = resolve_tree_id(folder, tname)   # id de la web (vía index.json)
+            # `name` = la carpeta del proyecto en disco (su nombre real): la web la
+            # usa al reconstruirse desde el mirror ("quedarse con el disco").
+            by_folder.setdefault(folder, []).append({"id": rid, "name": tname, "treeJson": content})
+        folders = [{"name": k, "projects": v} for k, v in sorted(by_folder.items())]
+        with STATE_LOCK:
+            seq = STATE_SEQ
+        self._json(200, {"folders": folders, "seq": seq})
+
+    def _state_stream(self, since):
+        """SSE de larga duración: empuja los cambios de tree.json con seq > since."""
+        try:
+            since = int(since) if since is not None else 0
+        except (TypeError, ValueError):
+            since = 0
+        self.close_connection = True
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self._cors()
+        self.end_headers()
+
+        last_beat = time.time()
+        try:
+            while True:
+                with STATE_LOCK:
+                    pending = [e for e in STATE_LOG if e["seq"] > since]
+                for ev in pending:
+                    self.wfile.write(f"data: {json.dumps(ev)}\n\n".encode("utf-8"))
+                    self.wfile.flush()
+                    since = ev["seq"]
+                if time.time() - last_beat > 15:
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                    last_beat = time.time()
+                time.sleep(0.2)
+        except (ConnectionError, OSError):
+            # el cliente cerró la conexión SSE (reconexión normal del mirror) → fin tranquilo
+            pass
+
+    def _state_write(self, body):
+        """Write-through de la web: escribe tree.json y marca el mtime como ya
+        visto para que el watcher NO devuelva el eco al que lo escribió.
+
+        ANTI-PISADA (bug 2026-07-15): si el archivo tiene un cambio EXTERNO que el
+        watcher aún no consumió (la IA/Claude Code lo escribió hace <0.5s), NO se
+        escribe: se emite ese cambio por SSE y se responde 409. Sin esto, la
+        versión vieja de la web pisaba la de la IA y —peor— el mtime quedaba
+        marcado como visto, así que el cambio externo se perdía en silencio."""
+        folder = body.get("folder") or "Local"
+        name = body.get("name") or body.get("id")
+        tree_json = body.get("treeJson")
+        if not name or tree_json is None:
+            self._json(400, {"error": "faltan name/id o treeJson"})
+            return
+        tdir = tree_dir(folder, name)
+        os.makedirs(tdir, exist_ok=True)
+        text = tree_json if isinstance(tree_json, str) else json.dumps(tree_json, ensure_ascii=False, indent=2)
+        fp = os.path.join(tdir, "tree.json")
+        key = _skey(folder, name)
+        seen_seq = body.get("seenSeq")               # hasta qué evento del stream VIO la web
+        with STATE_LOCK:
+            cur_mtime = None
+            try:
+                cur_mtime = os.path.getmtime(fp)
+            except OSError:
+                pass
+            prev = STATE.get(key)
+            # conflicto 1: cambio externo que el watcher AÚN no consumió (mtime nuevo)
+            if cur_mtime is not None and prev is not None and cur_mtime != prev["mtime"]:
+                content = _read_tree_file(folder, name)
+                seq = (prev or {}).get("seq", 0)
+                if content is not None:
+                    seq = _emit_state(folder, resolve_tree_id(folder, safe_name(name)), content)
+                STATE[key] = {"mtime": cur_mtime, "seq": seq}
+                self._json(409, {"conflict": True, "error": "external change pending"})
+                return
+            # conflicto 2: el watcher YA emitió un cambio de este archivo que la web
+            # todavía no vio cuando capturó su versión → el write es stale igual
+            if (seen_seq is not None and prev is not None
+                    and prev.get("seq", 0) > int(seen_seq)):
+                self._json(409, {"conflict": True, "error": "stale write (newer change emitted)"})
+                return
+            with open(fp, "w", encoding="utf-8") as f:
+                f.write(text)
+            try:
+                STATE[key] = {"mtime": os.path.getmtime(fp), "seq": (prev or {}).get("seq", 0)}
+            except OSError:
+                pass
+        self._json(200, {"ok": True})
+
+    def _chat(self, body):
+        pid = body.get("projectId")
+        folder = body.get("folder") or "Local"
+        name = body.get("name") or pid               # carpeta del proyecto = su nombre
+        message = body.get("message")
+        if not pid or not message:
+            self._json(400, {"error": "faltan projectId o message"})
+            return
+        if not os.path.exists(os.path.join(tree_dir(folder, name), "tree.json")):
+            self._json(409, {"error": "the project is not synced (tree.json missing)", "code": "not_synced"})
+            return
+
+        # proyectos tipo `editor` (doc 27): con target LOCAL el CLI recibe la carpeta
+        # (--add-dir); si el target vive en un conector EXTERNO, la web manda
+        # `editorRelay` {url, token} y Claude opera el /fs por MCP (fase 4).
+        editor_target = None
+        editor_relay = None
+        try:
+            with open(os.path.join(tree_dir(folder, name), "tree.json"), encoding="utf-8") as f:
+                is_editor = json.load(f).get("type") == "editor"
+        except Exception:
+            is_editor = False
+        if is_editor:
+            editor_target = editorfs.get_target(app_dir(), pid)
+            relay = body.get("editorRelay")
+            if not editor_target and isinstance(relay, dict) and relay.get("url") and relay.get("token"):
+                editor_relay = {"url": relay["url"], "token": relay["token"], "projectId": pid}
+            if not editor_target and not editor_relay:
+                self._json(409, {"error": "the editor project has no folder assigned (pick its location in the web app)"})
+                return
+
+        # cwd = la CARPETA del proyecto (estable por chat dentro de la carpeta). Así
+        # --resume sobrevive el cambio de foco entre proyectos de la misma carpeta y
+        # Claude "sabe" en qué carpeta labura (su cwd + el focus_note).
+        work_dir = folder_dir(folder)
+        cli_key = body.get("cli") or "claude"
+        adapter = CLIS.get(cli_key)
+        if not adapter:
+            self._json(400, {"error": f"CLI desconocido: {cli_key}"})
+            return
+        web_session = body.get("sessionId")
+        # la sesión (resume) está atada al cwd (la carpeta) y al CLI; se cachea por
+        # (sesión web, carpeta, cli). Solo aplica a los CLIs que soportan --resume.
+        skey = f"{web_session}::{safe_name(folder)}::{cli_key}" if web_session else None
+        resume = body.get("resume") or (SESSION_MAP.get(skey) if skey else None)
+        mode = body.get("mode") or "auto-edit"
+        model = body.get("model")
+        effort = body.get("effort")
+
+        run = new_run()
+        # cómo el subproceso MCP de permisos vuelve a hablarnos (claude.py lo cablea)
+        run["local_url"] = f"http://{HOST}:{PORT}"
+        run["local_token"] = get_token()
+
+        def worker():
+            # el estado TERMINAL lo garantiza run_cli (bitácora §67): la web espera ese
+            # evento por el SSE y no tiene otra forma de saber que el turno terminó.
+            # Acá solo queda que este hilo —daemon, se muere en silencio— no se lleve
+            # puesta la anotación de la sesión para el --resume.
+            try:
+                run_cli(run, adapter, work_dir, message, mode, model, resume, name, folder,
+                        effort, editor_target, editor_relay)
+            finally:
+                if adapter.supports_resume and run.get("claude_session_id") and skey:
+                    SESSION_MAP[skey] = run["claude_session_id"]
+
+        threading.Thread(target=worker, daemon=True).start()
+        self._json(200, {"runId": run["id"]})
+
+    def _perm_ask(self, body):
+        """Lo llama permission_mcp.py (el subproceso MCP): emite el pedido al chat y
+        BLOQUEA hasta que el usuario conteste. El server es ThreadingHTTPServer, así
+        que esta espera no frena al resto."""
+        with RUNS_LOCK:
+            run = RUNS.get(body.get("runId"))
+        if not run:
+            self._json(404, {"error": "run no encontrado"})
+            return
+        ans = perm_ask(run, body.get("tool") or "", body.get("input") or {},
+                       body.get("toolUseId") or "")
+        self._json(200, ans)
+
+    def _perm_answer(self, body):
+        """Lo llama la WEB cuando apretás Permitir / Rechazar en la tarjeta."""
+        with RUNS_LOCK:
+            run = RUNS.get(body.get("runId"))
+        if not run:
+            self._json(404, {"error": "run no encontrado"})
+            return
+        ok = perm_answer(run, body.get("id") or "", body.get("decision") or "deny",
+                         body.get("message"), body.get("input"))
+        self._json(200 if ok else 409,
+                   {"ok": ok} if ok else {"error": "ese pedido ya no espera respuesta"})
+
+    def _cancel(self, rid):
+        with RUNS_LOCK:
+            run = RUNS.get(rid)
+        if not run:
+            self._json(404, {"error": "run no encontrado"})
+            return
+        proc = run.get("proc")
+        if proc and proc.poll() is None:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+        # por set_status (y no a mano): es el que llama a perm_release. Si había un
+        # pedido de permiso esperando, el subproceso MCP que lo hizo quedaba colgado
+        # hasta el timeout de 15 min — y mientras tanto TIENE los pipes del CLI, así
+        # que el run no podía terminar nunca (bitácora §67).
+        set_status(run, "cancelled")
+        self._json(200, {"ok": True})
+
+    # --- proxy de fetch (resuelve CORS: el request lo hace el server, no el browser) ---
+    def _proxy_fetch(self, body):
+        """Hace un request HTTP server-side y devuelve la respuesta. Lo usa el modo
+        object para mandar fetches sin chocar con CORS (el browser no puede). Una
+        respuesta HTTP (incluido 4xx/5xx) es ok=True con su status/body; un error de
+        red/DNS es ok=False con el mensaje."""
+        url = (body.get("url") or "").strip()
+        method = (body.get("method") or "GET").upper()
+        raw_headers = body.get("headers") or {}
+        data = body.get("body")
+        if not url:
+            self._json(400, {"error": "falta url"})
+            return
+
+        hdrs = {}
+        if isinstance(raw_headers, list):          # [{k,v}]
+            for hh in raw_headers:
+                if isinstance(hh, dict) and hh.get("k"):
+                    hdrs[hh["k"]] = hh.get("v", "")
+        elif isinstance(raw_headers, dict):        # {k:v}
+            hdrs = {str(k): ("" if v is None else str(v)) for k, v in raw_headers.items()}
+
+        payload = None
+        if data is not None and method not in ("GET", "HEAD"):
+            payload = data.encode("utf-8") if isinstance(data, str) else json.dumps(data).encode("utf-8")
+
+        try:
+            req = urllib.request.Request(url, data=payload, method=method, headers=hdrs)
+            ctx = ssl.create_default_context()
+            with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
+                text = resp.read().decode("utf-8", errors="replace")
+                self._json(200, {"ok": True, "status": resp.status,
+                                 "statusText": getattr(resp, "reason", "") or "", "body": text})
+        except urllib.error.HTTPError as e:
+            try:
+                text = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                text = ""
+            self._json(200, {"ok": True, "status": e.code,
+                             "statusText": getattr(e, "reason", "") or "", "body": text})
+        except Exception as e:
+            self._json(200, {"ok": False, "error": str(e)})
+
+    def _stream(self, rid):
+        with RUNS_LOCK:
+            run = RUNS.get(rid)
+        if not run:
+            self._json(404, {"error": "run no encontrado"})
+            return
+
+        # cerramos el socket al terminar el run (no keep-alive): así clientes
+        # como curl no quedan colgados y el thread se libera. El navegador igual
+        # cierra el EventSource al recibir un estado terminal.
+        self.close_connection = True
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self._cors()
+        self.end_headers()
+
+        sent = 0
+        terminal = ("done", "error", "cancelled")
+        last_beat = time.time()
+        try:
+            while True:
+                with RUNS_LOCK:
+                    events = run["events"][sent:]
+                    sent += len(events)
+                    status = run["status"]
+                for ev in events:
+                    self.wfile.write(f"data: {json.dumps(ev)}\n\n".encode("utf-8"))
+                    self.wfile.flush()
+                if status in terminal and sent >= len(run["events"]):
+                    break
+                # heartbeat para que el socket no muera
+                if time.time() - last_beat > 15:
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                    last_beat = time.time()
+                time.sleep(0.1)
+        except (ConnectionError, OSError):
+            pass
+
+    # log un poco más prolijo
+    def log_message(self, fmt, *args):
+        print(f"[{self.log_date_time_string()}] {fmt % args}")
+
+
+# ===================== presencia del panel =====================
+# La ventana del panel mantiene abierto un SSE (/panel/alive). Cuando la cerrás, el
+# socket muere: si este proceso fue el que abrió la ventana (AUTO_STOP), se apaga —
+# "cerrar la ventana" ES cerrar el programa. Una instancia residente (--no-ui, la
+# del auto-inicio) NO se apaga: tiene que seguir viva para la web.
+PANELS = 0
+PANELS_LOCK = threading.Lock()
+AUTO_STOP = False
+PANEL_GRACE = 6.0        # margen para un F5 / reapertura antes de apagar
+
+
+def _panel_gone():
+    time.sleep(PANEL_GRACE)
+    with PANELS_LOCK:
+        if PANELS:
+            return                      # volvió (recarga): seguimos vivos
+    print("Panel cerrado → apagando el backend local.")
+    os._exit(0)
+
+
+def _instance_alive(port):
+    """¿Lo que ocupa el puerto es OTRA instancia de este backend? (/health es público)"""
+    try:
+        with urllib.request.urlopen(f"http://{HOST}:{port}/health", timeout=2) as r:
+            return (json.loads(r.read().decode("utf-8")) or {}).get("name") == NAME
+    except Exception:
+        return False
+
+
+def main():
+    # modo MCP (doc 27, fase 4): re-ejecución de este mismo binario/script como
+    # MCP server stdio de fs para editores EXTERNOS (lo lanza Claude Code).
+    if "--mcp-permission" in sys.argv:
+        import permission_mcp
+        permission_mcp.main()
+        return
+    if "--mcp-fs" in sys.argv:
+        import editor_mcp
+        editor_mcp.main()
+        return
+
+    # modo selector de carpeta: lo lanza pick_directory() como subproceso.
+    if "--pick-dir" in sys.argv:
+        i = sys.argv.index("--pick-dir")
+        title = sys.argv[i + 1] if i + 1 < len(sys.argv) else "Elegí una carpeta"
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")   # rutas con acentos
+        except Exception:
+            pass
+        print(_pick_directory_dialog(title))
+        return
+
+    parser = argparse.ArgumentParser(description="DiagraMind backend local")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT,
+                        help=f"puerto (default {DEFAULT_PORT})")
+    parser.add_argument("--no-ui", action="store_true",
+                        help="no abrir el panel de control (lo usan los auto-inicios)")
+    args = parser.parse_args()
+
+    # En Windows, si stdout es cp1252 (consola/redirección) los print con → o ·
+    # crashean. Forzamos UTF-8 para la salida del propio server.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
+    url = f"http://{HOST}:{args.port}"
+
+    global PORT
+    PORT = args.port
+    try:
+        server = ThreadingHTTPServer((HOST, args.port), Handler)
+    except OSError as e:
+        # El puerto está ocupado. Si es OTRA instancia NUESTRA, esto fue un segundo
+        # doble clic: el usuario quiere VER el panel, no levantar un server nuevo.
+        if _instance_alive(args.port):
+            print(f"DiagraMind local ya está corriendo en {url}"
+                  f"{' — abriendo el panel.' if not args.no_ui else '.'}")
+            if not args.no_ui:
+                panel.open_panel(url)
+        else:
+            print(f"No se pudo abrir el puerto {args.port}: {e}")
+            print(f"Probá otro puerto:  --port {args.port + 1}")
+        return
+
+    os.makedirs(projects_dir(), exist_ok=True)
+    cb = find_claude()
+    sweep_temp_files()                       # limpiar adjuntos vencidos al arrancar
+    tok = get_token()                        # cargar/crear el token de acceso
+
+    # watcher del state mirror (poll de mtime → SSE)
+    threading.Thread(target=watch_state, daemon=True).start()
+
+    print(f"DiagraMind local backend v{VERSION} → {url}")
+    print(f"Claude Code: {'OK · ' + (claude_version(cb) or '') if cb else 'NO ENCONTRADO'}")
+    print(f"Proyectos en: {projects_dir()}")
+    print(f"Contraseña (token) de acceso: {tok}")
+    print(f"  (guardada en {token_path()} — la web te la va a pedir al conectar)")
+    print(f"Panel de control: {url}  (CLIs, contraseña, proyectos)")
+    print("Ctrl+C para detener.")
+
+    if not args.no_ui:
+        # arrancamos CON panel: cerrar esa ventana apaga el backend (ver _panel_alive).
+        global AUTO_STOP
+        AUTO_STOP = True
+        print("Cerrar la ventana del panel detiene el backend.")
+        # el panel se abre en un thread con un respiro: si lo abrimos antes del
+        # serve_forever() de abajo, el navegador llega a un puerto que todavía no
+        # contesta y muestra "no se pudo conectar".
+        def _launch():
+            time.sleep(0.5)
+            how = panel.open_panel(url)
+            if how is None:
+                print(f"No pude abrir una ventana: entrá vos a {url}")
+        threading.Thread(target=_launch, daemon=True).start()
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nDeteniendo…")
+    finally:
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()

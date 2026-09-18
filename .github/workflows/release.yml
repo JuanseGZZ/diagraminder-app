@@ -1,0 +1,73 @@
+name: Release
+
+# Compila la app de escritorio (backend + web adentro) para Windows, macOS y Linux y
+# la publica como Release. Se dispara al pushear un tag v* (lo hace `release.sh` del
+# repo privado). workflow_dispatch corre solo el build, sin publicar.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write            # para crear el Release
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false       # que un SO roto no oculte si los otros dos salieron
+      matrix:
+        include:
+          - { os: windows-latest, name: win,   ext: ".exe", sep: ";" }
+          - { os: macos-latest,   name: mac,   ext: "",     sep: ":" }
+          - { os: ubuntu-latest,  name: linux, ext: "",     sep: ":" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyinstaller
+
+      # El payload web va DENTRO del binario. El backend lo busca en sys._MEIPASS/web
+      # (ver web_dir() en backend/server.py).
+      - name: Compilar
+        run: >
+          pyinstaller --onefile --name DiagraMinder-${{ matrix.name }}
+          --add-data "web${{ matrix.sep }}web"
+          backend/server.py
+
+      # Que no se publique un binario que no arranca. En Windows el shell es distinto,
+      # así que el humo se corre solo en los unix — igual alcanza para cazar un payload
+      # incompleto, que es el fallo probable.
+      - name: Probar que levanta y sirve la app
+        if: matrix.os != 'windows-latest'
+        run: |
+          ./dist/DiagraMinder-${{ matrix.name }} --port 8788 --no-ui &
+          for _ in $(seq 1 60); do curl -sf http://127.0.0.1:8788/health >/dev/null && break; sleep 0.5; done
+          HTML=$(curl -s http://127.0.0.1:8788/)
+          case "$HTML" in *__DM_DESKTOP__*) echo "ok: la página trae el flag" ;;
+                          *) echo "✖ la página servida NO trae el flag"; exit 1 ;; esac
+          TOK=${HTML#*__DM_TOKEN__=\"}; TOK=${TOK%%\"*}
+          for p in /dist/bundle.js /app/bolzaDeEstilos/styles.css; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8788$p?token=$TOK")
+            [ "$code" = "200" ] || { echo "✖ $p devolvió $code"; exit 1; }
+          done
+          echo "ok: los estáticos resuelven"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DiagraMinder-${{ matrix.name }}
+          path: dist/DiagraMinder-${{ matrix.name }}${{ matrix.ext }}
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts, merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/DiagraMinder-*
+          body: |
+            **La app y su backend en un solo archivo.** Bajá el de tu sistema, abrilo y listo.
