@@ -1,5 +1,9 @@
+# Artefactos de PyInstaller, SOLO en la raíz. Las barras del principio importan:
+# sin ellas, `dist/` también matchea `web/dist/` — y ahí vive el bundle, que es
+# literalmente la app. Pasó: el primer commit de este repo se subió SIN el bundle.
+/build/
+/dist/
+/*.spec
+
 __pycache__/
 *.py[cod]
-build/
-dist/
-*.spec
