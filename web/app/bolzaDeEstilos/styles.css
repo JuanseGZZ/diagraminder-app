@@ -5358,6 +5358,9 @@ body:has(.modal-overlay:not(.hidden)) #webhub-cursors { display: none !important
   .dm-anim, .dm-anim *{animation:none !important}
   .dm-in{animation:none !important;opacity:1 !important;transform:none !important}
 }
+/* En el home los dos botones de descarga son <a> (van a GitHub, no disparan JS):
+   sin esto heredan el subrayado y el color de link y no parecen botones. */
+a.dm-btn-primary, a.dm-btn-secondary { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
 .dm-btn-primary{appearance:none;border:1px solid var(--accent);background:var(--accent);color: var(--accent-text);font:inherit;font-weight:600;font-size:15.5px;padding:13px 24px;border-radius:9px;cursor:pointer;animation:dm-glow 3.2s ease-in-out infinite;transition:background .15s,border-color .15s}
 .dm-btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
 .dm-btn-secondary{appearance:none;border:1px solid var(--border-strong);background:transparent;color:var(--text);font:inherit;font-weight:600;font-size:15.5px;padding:13px 24px;border-radius:9px;cursor:pointer;transition:border-color .15s}
@@ -7401,6 +7404,45 @@ body.dm-tour-open { overflow: hidden; }
   margin: 4px 0 0;
   color: var(--text-muted);
   font-size: 11.5px; line-height: 1.5;
+}
+
+/* ===== Aviso de versión nueva (doc 37 §F17) =====
+   Abajo a la derecha y por encima del board, pero DEBAJO de los modales (z-index
+   menor que .dlg-overlay): si se abre un diálogo, el aviso no compite con él.
+   `.hidden` no es global en esta hoja; este componente se saca del DOM, no se esconde. */
+.dm-update {
+  position: fixed;
+  right: 18px; bottom: 18px;
+  z-index: 9000;
+  display: flex; align-items: center; gap: 14px;
+  max-width: min(380px, calc(100vw - 36px));
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.22);
+  animation: dm-fadeup .35s ease-out both;
+}
+.dm-update-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dm-update-title { color: var(--text); font: 650 13px var(--font-ui); }
+.dm-update-sub { color: var(--text-muted); font: 12px var(--font-mono, ui-monospace, monospace); }
+.dm-update-acts { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.dm-update-btn {
+  padding: 6px 12px;
+  background: var(--accent); border: 1px solid var(--accent); color: #fff;
+  border-radius: 8px; font: 600 12px var(--font-ui); cursor: pointer;
+}
+.dm-update-btn:hover:not(:disabled) { filter: brightness(1.07); }
+.dm-update-btn:disabled { opacity: .6; cursor: default; }
+.dm-update-x {
+  background: none; border: none; padding: 2px 4px;
+  color: var(--text-muted); font-size: 13px; cursor: pointer;
+}
+.dm-update-x:hover { color: var(--text); }
+
+/* En pantallas angostas ocupa el ancho, para que el botón no quede apretado. */
+@media (max-width: 520px) {
+  .dm-update { left: 18px; right: 18px; max-width: none; }
 }
 
 /* ===== Modales de diálogo — reemplazo de alert/confirm/prompt (app/ui/modals.js) =====

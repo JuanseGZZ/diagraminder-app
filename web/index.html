@@ -1076,37 +1076,80 @@
     </svg>
 
     <div class="dm-in" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:24px;max-width:780px;text-align:center;animation:dm-fadeup .7s ease-out both">
-      <h1 style="margin:0;font-size:clamp(36px,6vw,64px);font-weight:680;letter-spacing:-.035em;line-height:1.04">
-        Diagrams that<br><span style="color:var(--accent)">do the work.</span>
+      <h1 style="margin:0;font-size:clamp(34px,5.6vw,60px);font-weight:680;letter-spacing:-.035em;line-height:1.06">
+        The context of your project,<br><span style="color:var(--accent)">where your agent can reach it.</span>
       </h1>
-      <p style="margin:0;font-size:clamp(15px,1.6vw,18.5px);color:var(--text-muted);max-width:520px;line-height:1.6">Build trees, flows, object models — and AI agent teams — on one local-first canvas. Versioned, reversible, private.</p>
+      <p style="margin:0;font-size:clamp(15px,1.6vw,18.5px);color:var(--text-muted);max-width:560px;line-height:1.6">
+        A canvas you and Claude Code edit at the same time. You watch it change while it works.
+        Runs on your machine — your files, your keys, no account.
+      </p>
 
-      <!-- Dos filas: arriba los dos caminos de siempre (un file suelto / abrir algo) y
-           ABAJO, más ancho, "New project" — el camino RESALTADO, que arma una carpeta
-           con los files que esa clase de proyecto necesita. El ancho extra es la
-           jerarquía: se lee como la base sobre la que se apoyan los otros dos. -->
       <div class="home-cta">
         <div class="home-cta-row">
           <button id="home-new" class="dm-btn-secondary">New diagram</button>
           <button id="home-open" class="dm-btn-secondary">Open…</button>
         </div>
       </div>
+      <p style="margin:0;font-size:13px;color:var(--text-muted)">Nothing to sign up for. This page already works.</p>
     </div>
   </section>
 
-  <section style="position:relative;padding:70px 24px 36px;max-width:1160px;margin:0 auto">
-    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:26px;gap:16px;flex-wrap:wrap">
-      <h2 style="margin:0;font-size:13px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)">Eight modes, one canvas</h2>
-      <span style="font-size:13px;color:var(--text-muted)">Switch modes without leaving the board</span>
+  <!-- ===== EL CASO DE USO. Uno solo, hasta el final. =====
+       El home viejo listaba ocho modos y no mostraba ninguno usándose: como ninguno
+       podía ser EL caso sin opacar a los otros, no se mostraba nada y nadie entendía
+       para qué servía esto (doc 37 §1). Ahora hay un caso y se cuenta entero. -->
+  <section style="position:relative;padding:76px 24px 20px;max-width:1160px;margin:0 auto">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-bottom:38px">
+      <span style="font-size:12px;font-weight:650;letter-spacing:.08em;color:var(--accent)">MINUTE 1 OF A REAL PROJECT</span>
+      <h2 style="margin:0;font-size:clamp(22px,3vw,31px);font-weight:680;letter-spacing:-.02em">Your documentation stops rotting</h2>
+      <p style="margin:0;max-width:600px;font-size:14.5px;color:var(--text-muted);line-height:1.6">
+        Because the one who keeps it up to date is the one writing the code.
+      </p>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px">
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
+      <div class="dm-card">
+        <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.06em">01</div>
+        <div style="font-size:15.5px;font-weight:650">Map what exists</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Drop the modules, the decisions, the why. The org chart opens collapsed, so you read the shape at a glance and open what you need.</div>
+      </div>
+      <div class="dm-card">
+        <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.06em">02</div>
+        <div style="font-size:15.5px;font-weight:650">Connect your agent</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">One command prints the MCP config. Paste it and Claude Code can read every diagram — before it touches a single file.</div>
+      </div>
+      <div class="dm-card">
+        <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.06em">03</div>
+        <div style="font-size:15.5px;font-weight:650">It writes back</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">It finishes a change and leaves it written down: what it did, what is left. You see the canvas move while it works — no reload.</div>
+      </div>
+      <div class="dm-card dm-card-flagship">
+        <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.06em">04</div>
+        <div style="font-size:15.5px;font-weight:650">Put it to work</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">When one agent is not enough, wire a team on the canvas: who delegates to whom, which folder each one may touch, what it may run.</div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;padding:18px 20px;background:var(--surface2);border:1px solid var(--border);border-radius:14px;display:flex;flex-wrap:wrap;align-items:center;gap:14px;justify-content:center">
+      <code style="font:13px var(--font-mono,ui-monospace,monospace);color:var(--text)">DiagraMinder --mcp-config</code>
+      <span style="font-size:13px;color:var(--text-muted)">→ paste it into your <code style="font-size:12.5px">.mcp.json</code> and you are done</span>
+    </div>
+  </section>
+
+  <!-- ===== LOS MODOS, pero como formas del CONTEXTO, no como lista de features ===== -->
+  <section style="position:relative;padding:56px 24px 8px;max-width:1160px;margin:0 auto">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:24px;gap:16px;flex-wrap:wrap">
+      <h2 style="margin:0;font-size:13px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)">Five views of the same context</h2>
+      <span style="font-size:13px;color:var(--text-muted)">Your agent reads and writes all of them</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px">
 
       <div class="dm-card">
         <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"></circle><circle cx="18" cy="6" r="2.5"></circle><circle cx="12" cy="18" r="2.5"></circle><path d="M12 15.5V12H6V8.5M12 12h6V8.5"></path></svg>
         </div>
         <div style="font-size:15.5px;font-weight:650">Organigram</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Hierarchical card trees, drawn top-down like an org chart.</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">The documentation: the map of what exists and why it was decided that way.</div>
       </div>
 
       <div class="dm-card">
@@ -1114,15 +1157,7 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="5" height="5" rx="1"></rect><circle cx="18" cy="7" r="2.5"></circle><path d="M9 16l4-3 6 2"></path><path d="M4 19h4"></path></svg>
         </div>
         <div style="font-size:15.5px;font-weight:650">Canvas</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Free canvas — loose nodes, arrows and shapes, no structure imposed.</div>
-      </div>
-
-      <div class="dm-card">
-        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M5 6l1.5 1.5L9 5"></path><path d="M12 6h7"></path><path d="M5 12l1.5 1.5L9 11"></path><path d="M12 12h7"></path><path d="M5 18l1.5 1.5L9 17"></path><path d="M12 18h7"></path></svg>
-        </div>
-        <div style="font-size:15.5px;font-weight:650">Questionnaire</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Study questionnaires on the canvas — Q&amp;A, multiple-choice, tests.</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Associative memory: everything you learned and would otherwise forget.</div>
       </div>
 
       <div class="dm-card">
@@ -1130,7 +1165,7 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="9" height="3" rx="1"></rect><rect x="3" y="11" width="14" height="3" rx="1"></rect><rect x="3" y="17" width="6" height="3" rx="1"></rect></svg>
         </div>
         <div style="font-size:15.5px;font-weight:650">Activities</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Activities &amp; precedences, with an arrows view and a Gantt view.</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">What is left, in order, with what depends on what.</div>
       </div>
 
       <div class="dm-card">
@@ -1138,98 +1173,54 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"></path><path d="M12 3v9M12 12l8-4.5M12 12l-8-4.5"></path></svg>
         </div>
         <div style="font-size:15.5px;font-weight:650">Object</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Dynamic classes &amp; objects — build graphs, generate JSON / API calls.</div>
-      </div>
-
-      <div class="dm-card">
-        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M8 6L3 12l5 6"></path><path d="M16 6l5 6-5 6"></path></svg>
-        </div>
-        <div style="font-size:15.5px;font-weight:650">Editor</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Open a real folder and edit files, VS Code-style — for you and the AI.</div>
-      </div>
-
-      <div class="dm-card">
-        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M13 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9z"></path><path d="M13 3v6h5"></path><path d="M9 14h6M9 17h4"></path></svg>
-        </div>
-        <div style="font-size:15.5px;font-weight:650">Documents</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">A library for your PDFs, images, audio &amp; text — read them in dark mode, Acrobat-style tools coming.</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">The data model — and the same graph fires the requests that test it.</div>
       </div>
 
       <div class="dm-card dm-card-flagship">
         <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="6" r="2.5"></circle><circle cx="19" cy="6" r="2.5"></circle><circle cx="12" cy="18" r="2.5"></circle><path d="M7 7l10 -1M7 8l4.5 8.5M17 8l-4.5 8.5"></path></svg>
         </div>
-        <div style="font-size:15.5px;font-weight:650;display:flex;align-items:center;gap:8px">IA Orchestrator<span style="font-size:10px;font-weight:700;letter-spacing:.04em;color:var(--accent);background:var(--accent-dim);padding:2px 7px;border-radius:100px">FLAGSHIP</span></div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">A visual AI company — agents, resources, tasks and departments.</div>
+        <div style="font-size:15.5px;font-weight:650">IA Orchestrator</div>
+        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">The harness: agents, the folders they may touch, and what each one is allowed to run.</div>
       </div>
 
     </div>
+    <p style="margin:18px 0 0;font-size:13px;color:var(--text-muted);text-align:center">
+      There are two more — a study questionnaire and a document library. They are in there; they are just not the point.
+    </p>
   </section>
 
-  <section style="position:relative;margin:36px auto;max-width:1160px;padding:0 24px">
-    <div style="position:relative;background:var(--surface2);border:1px solid var(--border);border-radius:18px;padding:44px;display:flex;flex-wrap:wrap;gap:36px;align-items:center;overflow:hidden">
+  <!-- ===== LA DESCARGA. Los dos caminos, y cuál querés. ===== -->
+  <section style="position:relative;margin:56px auto 36px;max-width:1160px;padding:0 24px">
+    <div style="position:relative;background:var(--surface2);border:1px solid var(--border);border-radius:18px;padding:40px 36px;overflow:hidden">
       <div style="position:absolute;top:-40%;right:-10%;width:420px;height:420px;background:radial-gradient(circle, var(--accent-dim), transparent 70%);pointer-events:none"></div>
-
-      <svg class="dm-anim" width="300" height="150" viewBox="0 0 280 140" style="flex:0 0 auto;position:relative">
-        <line x1="30" y1="70" x2="140" y2="30" stroke="var(--border-strong)" stroke-width="1.4"></line>
-        <line x1="140" y1="30" x2="140" y2="110" stroke="var(--border-strong)" stroke-width="1.4"></line>
-        <line x1="140" y1="110" x2="250" y2="70" stroke="var(--border-strong)" stroke-width="1.4"></line>
-        <circle cx="30" cy="70" r="8" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"></circle>
-        <circle cx="140" cy="30" r="8" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"></circle>
-        <circle cx="140" cy="110" r="8" fill="var(--surface)" stroke="var(--border-strong)" stroke-width="2"></circle>
-        <rect x="232" y="58" width="24" height="24" rx="5" fill="var(--surface)" stroke="var(--border-strong)" stroke-width="2"></rect>
-        <circle r="4" fill="var(--accent)" style="offset-path:path('M30,70 L140,30 L140,110 L250,70');animation:dm-token 5s linear infinite"></circle>
-      </svg>
-      <div style="flex:1 1 320px;display:flex;flex-direction:column;gap:16px;position:relative">
-        <h3 style="margin:0;font-size:24px;font-weight:680;letter-spacing:-.015em">Not just a diagram — a company of AI agents.</h3>
-        <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px;font-size:14.5px;color:var(--text-muted)">
-          <li style="display:flex;gap:9px;align-items:baseline"><span style="color:var(--accent);font-weight:700">—</span>Delegates &amp; runs in parallel</li>
-          <li style="display:flex;gap:9px;align-items:baseline"><span style="color:var(--accent);font-weight:700">—</span>Uses your projects as tools</li>
-          <li style="display:flex;gap:9px;align-items:baseline"><span style="color:var(--accent);font-weight:700">—</span>Watch it live, undo anything</li>
-        </ul>
+      <div style="position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;margin-bottom:26px">
+        <h2 style="margin:0;font-size:clamp(21px,2.8vw,28px);font-weight:680;letter-spacing:-.02em">Two ways in</h2>
+        <p style="margin:0;max-width:540px;font-size:14px;color:var(--text-muted);line-height:1.6">
+          This page already works on its own — everything stays in your browser. The agents and the MCP need something running on your machine.
+        </p>
+      </div>
+      <div style="position:relative;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;max-width:760px;margin:0 auto">
+        <div class="dm-card dm-card-flagship">
+          <div style="font-size:15.5px;font-weight:650">The whole app</div>
+          <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">One file. Open it and it works, fully offline — the app and its backend together. This is the one you want.</div>
+          <a class="dm-btn-primary" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest" target="_blank" rel="noopener" style="text-decoration:none;text-align:center">Download</a>
+        </div>
+        <div class="dm-card">
+          <div style="font-size:15.5px;font-weight:650">Just the backend</div>
+          <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Run it next to this website instead. Same agents, same MCP — the code is open, read it before you run it.</div>
+          <a class="dm-btn-secondary" href="https://github.com/JuanseGZZ/diagraminder-backend" target="_blank" rel="noopener" style="text-decoration:none;text-align:center">See the code</a>
+        </div>
       </div>
     </div>
   </section>
 
-  <section style="position:relative;padding:36px 24px 8px;max-width:1160px;margin:0 auto">
-    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-bottom:28px">
-      <span style="font-size:12px;font-weight:650;letter-spacing:.08em;color:var(--accent)">YOUR COMPUTE · YOUR KEYS · YOUR CLOUD</span>
-      <h2 style="margin:0;font-size:clamp(22px,3vw,30px);font-weight:680;letter-spacing:-.02em">Runs on your terms — no surprise AI bills.</h2>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
-      <div class="dm-card">
-        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><rect x="6" y="6" width="12" height="12" rx="2"></rect><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"></path></svg>
-        </div>
-        <div style="font-size:15.5px;font-weight:650">Local AI, zero API bills</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Point agents at the AI already on your machine — local CLIs like Claude Code. No tokens metered, no per-call cost.</div>
-      </div>
-      <div class="dm-card">
-        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="15" r="4"></circle><path d="M11 12l9-9M17 4l3 3M14 7l2.5 2.5"></path></svg>
-        </div>
-        <div style="font-size:15.5px;font-weight:650">Or bring your own API</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Prefer frontier models? Drop in your Anthropic / OpenAI / other keys. Mix per agent — a cheap model to coordinate, a strong one for the hard parts.</div>
-      </div>
-      <div class="dm-card">
-        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"></circle><circle cx="18" cy="6" r="2.5"></circle><circle cx="12" cy="18" r="2.5"></circle><path d="M8 7.5L11 16.5M16 7.5L13 16.5"></path></svg>
-        </div>
-        <div style="font-size:15.5px;font-weight:650">Your own cloud + MCP</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Run it server-side on your self-hosted connectors. Keys stay in the connector, never the browser. Agents reach out through MCP and custom APIs.</div>
-      </div>
-    </div>
-    <p style="text-align:center;margin:26px 0 0;font-size:13.5px;color:var(--text-muted)">Local-first. Private by default. Your keys never leave your machine.</p>
-  </section>
-
-  <section style="position:relative;padding:22px 24px 44px;max-width:1160px;margin:0 auto">
+  <section style="position:relative;padding:8px 24px 44px;max-width:1160px;margin:0 auto">
     <div style="display:flex;flex-wrap:wrap;gap:28px;justify-content:center;padding:20px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:13px;color:var(--text-muted)">
-      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>Local-first &amp; private</span>
-      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>Your own cloud + MCP</span>
-      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>Full version history</span>
-      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>Reversible AI</span>
+      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>Your files, on your disk</span>
+      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>No account, ever</span>
+      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>Your own AI keys, or none</span>
+      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>Every change reversible</span>
     </div>
   </section>
 

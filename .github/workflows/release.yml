@@ -26,14 +26,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install pyinstaller
+      - run: pip install pyinstaller certifi
 
+      # --collect-data certifi: sin el cacert.pem adentro, TODO HTTPS del binario
+      # falla con CERTIFICATE_VERIFY_FAILED — y el chequeo de versiones es HTTPS.
+      # El `import certifi` vive dentro de un try y PyInstaller no lo detecta solo.
       # El payload web va DENTRO del binario. El backend lo busca en sys._MEIPASS/web
       # (ver web_dir() en backend/server.py).
       - name: Compilar
         run: >
           pyinstaller --onefile --name DiagraMinder-${{ matrix.name }}
           --add-data "web${{ matrix.sep }}web"
+          --hidden-import certifi --collect-data certifi
           backend/server.py
 
       # Que no se publique un binario que no arranca. En Windows el shell es distinto,
