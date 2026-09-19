@@ -17,9 +17,17 @@ jobs:
       fail-fast: false       # que un SO roto no oculte si los otros dos salieron
       matrix:
         include:
-          - { os: windows-latest, name: win,   ext: ".exe", sep: ";" }
-          - { os: macos-latest,   name: mac,   ext: "",     sep: ":" }
-          - { os: ubuntu-latest,  name: linux, ext: "",     sep: ":" }
+          # `win`: --noconsole y sigue siendo UN .exe.
+          # `mac`: --onedir --windowed arma un .app (un directorio) → se publica
+          #        comprimido. Onefile+windowed lo desaconseja el propio PyInstaller
+          #        ("choca con la seguridad de macOS", error a partir de su v7), y un
+          #        ejecutable pelado, al doble-clickearlo, abre Terminal.
+          # `linux`: un binario suelto no abre terminal al lanzarlo desde el escritorio.
+          # El MCP no se rompe sin consola: hay stdio igual cuando el padre da pipes,
+          # que es como lo lanza Claude Code.
+          - { os: windows-latest, name: win,   ext: ".exe", sep: ";", modo: "--onefile", win: "--noconsole" }
+          - { os: macos-latest,   name: mac,   ext: ".zip", sep: ":", modo: "--onedir",  win: "--windowed" }
+          - { os: ubuntu-latest,  name: linux, ext: "",     sep: ":", modo: "--onefile", win: "" }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -35,7 +43,7 @@ jobs:
       # (ver web_dir() en backend/server.py).
       - name: Compilar
         run: >
-          pyinstaller --onefile --name DiagraMinder-${{ matrix.name }}
+          pyinstaller ${{ matrix.modo }} ${{ matrix.win }} --noconfirm --name DiagraMinder-${{ matrix.name }}
           --add-data "web${{ matrix.sep }}web"
           --hidden-import certifi --collect-data certifi
           backend/server.py
@@ -46,7 +54,10 @@ jobs:
       - name: Probar que levanta y sirve la app
         if: matrix.os != 'windows-latest'
         run: |
-          ./dist/DiagraMinder-${{ matrix.name }} --port 8788 --no-ui &
+          BIN=./dist/DiagraMinder-${{ matrix.name }}
+          # en mac el artefacto es el .app: se prueba su ejecutable interno
+          [ -d "$BIN.app" ] && BIN="$BIN.app/Contents/MacOS/DiagraMinder-${{ matrix.name }}"
+          "$BIN" --port 8788 --no-ui &
           for _ in $(seq 1 60); do curl -sf http://127.0.0.1:8788/health >/dev/null && break; sleep 0.5; done
           HTML=$(curl -s http://127.0.0.1:8788/)
           case "$HTML" in *__DM_DESKTOP__*) echo "ok: la página trae el flag" ;;
@@ -57,6 +68,12 @@ jobs:
             [ "$code" = "200" ] || { echo "✖ $p devolvió $code"; exit 1; }
           done
           echo "ok: los estáticos resuelven"
+
+      # El .app es un DIRECTORIO: no se puede publicar como asset suelto, va comprimido.
+      # `ditto` y no `zip` porque preserva los metadatos del bundle en macOS.
+      - name: Comprimir el .app (solo mac)
+        if: matrix.os == 'macos-latest'
+        run: ditto -c -k --keepParent dist/DiagraMinder-mac.app dist/DiagraMinder-mac.zip
 
       - uses: actions/upload-artifact@v4
         with:
@@ -75,3 +92,6 @@ jobs:
           files: artifacts/DiagraMinder-*
           body: |
             **La app y su backend en un solo archivo.** Bajá el de tu sistema, abrilo y listo.
+
+            - **macOS**: descomprimí y arrastrá `DiagraMinder-mac.app` a Aplicaciones.
+            - **Windows / Linux**: es un único ejecutable.

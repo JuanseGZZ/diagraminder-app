@@ -210,8 +210,8 @@
           <a class="ia-download-link" id="ia-app-win" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-win.exe" download>
             ⬇ Windows<span class="ia-download-tag">64-bit</span>
           </a>
-          <a class="ia-download-link" id="ia-app-mac" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-mac" download>
-            ⬇ macOS<span class="ia-download-tag">Apple Silicon</span>
+          <a class="ia-download-link" id="ia-app-mac" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-mac.zip" download>
+            ⬇ macOS<span class="ia-download-tag">.app</span>
           </a>
           <a class="ia-download-link" id="ia-app-linux" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-linux" download>
             ⬇ Linux<span class="ia-download-tag">64-bit</span>
@@ -357,6 +357,9 @@
     <div class="side-panel-footer">
       <p class="side-panel-group-title">Local connection</p>
       <button class="side-panel-btn dm-web-only" id="ia-connect-local">Connect local</button>
+      <!-- Solo en desktop: es la info de ESTE programa (puerto, carpetas, token, CLIs).
+           En la web no hay programa del que hablar. -->
+      <button class="side-panel-btn dm-desktop-only" id="ia-local-panel">This program</button>
       <div class="ia-status" id="ia-status" data-state="disconnected">
         <span class="ia-status-dot"></span>
         <span class="ia-status-text">Disconnected</span>
