@@ -137,6 +137,14 @@
         </li>
 
         <li class="nav-actions">
+          <!-- Aviso de que el túnel está ABIERTO. Vive en la barra para que se vea
+               desde cualquier modo, sin abrir nada: mientras esté, tu máquina es
+               alcanzable desde afuera y eso no puede estar escondido en un panel.
+               Arranca oculto; lo prende tunnelAviso.js. -->
+          <button id="tunnel-badge" class="tunnel-badge hidden" type="button"
+                  title="The public tunnel is open — click for details">
+            <span class="tunnel-badge-dot" aria-hidden="true"></span><span>Tunnel</span>
+          </button>
           <button id="chat-btn" class="nav-pill" title="Chat with the AI"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>AI</button>
           <button id="ia-btn" class="nav-pill" title="Settings, connectors and appearance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5 15.4 17.5M15.4 6.5 8.6 10.5"/></svg>Settings</button>
         </li>
@@ -200,8 +208,8 @@
     </div>
     <div class="side-panel-body">
       <section class="side-panel-group">
-        <p class="side-panel-group-title">Local software</p>
-        <button class="side-panel-btn dm-web-only" id="ia-download-local">Download local</button>
+        <p class="side-panel-group-title">Backend</p>
+        <button class="side-panel-btn dm-web-only" id="ia-download-local">Download backend</button>
       <div class="ia-download hidden dm-web-only" id="ia-download-options">
 
         <div class="ia-dl-group">
@@ -355,8 +363,8 @@
 
     <!-- footer pinneado al fondo: conectar local + estado de conexión, con línea separadora -->
     <div class="side-panel-footer">
-      <p class="side-panel-group-title">Local connection</p>
-      <button class="side-panel-btn dm-web-only" id="ia-connect-local">Connect local</button>
+      <p class="side-panel-group-title">Backend connection</p>
+      <button class="side-panel-btn dm-web-only" id="ia-connect-local">Connect backend</button>
       <!-- Solo en desktop: es la info de ESTE programa (puerto, carpetas, token, CLIs).
            En la web no hay programa del que hablar. -->
       <button class="side-panel-btn dm-desktop-only" id="ia-local-panel">This program</button>
@@ -430,9 +438,9 @@
         <div class="ia-chat-lock-box">
           <svg class="ia-chat-lock-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
           <p class="ia-chat-lock-title">The chat is off</p>
-          <p class="ia-chat-lock-sub">It needs an AI to talk to: connect the local software, or add an API key.</p>
+          <p class="ia-chat-lock-sub">It needs an AI to talk to: connect the backend, or add an API key.</p>
           <div class="ia-chat-lock-actions">
-            <button class="ia-chat-lock-btn is-primary" id="ia-chat-lock-connect" type="button">Connect to local</button>
+            <button class="ia-chat-lock-btn is-primary" id="ia-chat-lock-connect" type="button">Connect backend</button>
             <button class="ia-chat-lock-btn" id="ia-chat-lock-api" type="button">Add API key</button>
           </div>
         </div>

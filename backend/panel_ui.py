@@ -17,7 +17,7 @@ PAGE = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DiagraMind Local</title>
+<title>DiagraMinder</title>
 <style>
 :root {
   --bg:#1f2229; --surface:#2b2e37; --surface-el:#313543; --surface2:#383d4a;
@@ -88,6 +88,10 @@ header .spacer { flex:1; }
 .dot.warn { background:var(--warning); box-shadow:0 0 0 3px var(--warning-dim); }
 .dot.off  { background:var(--border-strong); }
 .dot.err  { background:var(--danger); box-shadow:0 0 0 3px var(--danger-dim); }
+/* el .mcp.json listo para copiar: que no estire la tarjeta ni desborde de costado */
+.mcpjson { max-height:220px; overflow:auto; white-space:pre; margin:0 0 10px;
+           padding:10px 12px; background:var(--bg); border:1px solid var(--border);
+           border-radius:8px; font-size:11.5px; line-height:1.5; }
 
 /* ---- botones ---- */
 button {
@@ -169,7 +173,7 @@ pre.console {
       </svg>
     </div>
     <div>
-      <h1>DiagraMind Local</h1>
+      <h1>DiagraMinder</h1>
       <div class="sub" id="hdr-sub">cargando…</div>
     </div>
     <div class="spacer"></div>
@@ -194,7 +198,7 @@ pre.console {
       <button class="ghost" id="tok-copy">Copiar</button>
     </div>
     <div class="note info">
-      La web te la pide una sola vez al tocar <strong>Conectar local</strong>. Sirve para que
+      La web te la pide una sola vez al tocar <strong>Conectar backend</strong>. Sirve para que
       ninguna otra página de tu navegador pueda usar este backend.
     </div>
     <div class="row">
@@ -221,11 +225,44 @@ pre.console {
     </div>
   </section>
 
+  <!-- ============ MCP: el interruptor y los niveles (doc 37 §F19) ============ -->
+  <section class="card">
+    <h2>MCP<span class="spacer"></span><span class="pill" id="mcp-pill"></span></h2>
+    <div class="note info">
+      Con esto tu agente de código —Claude Code y cualquier cliente MCP— lee y escribe
+      tus diagramas mientras codea, y vos lo ves cambiar en la pantalla.
+    </div>
+    <label class="row" style="cursor:pointer">
+      <input type="checkbox" id="mcp-on" style="width:15px;height:15px">
+      <div class="grow"><div class="name">MCP activado</div></div>
+    </label>
+    <div id="mcp-lvls"></div>
+    <div class="row">
+      <div class="grow">
+        <div class="name">Carpeta que puede tocar</div>
+        <div class="meta mono" id="mcp-root"></div>
+      </div>
+      <button id="mcp-pick">Elegir…</button>
+    </div>
+    <div class="row">
+      <div class="grow">
+        <div class="name">Pegá esto en el <span class="mono">.mcp.json</span> de tu proyecto</div>
+        <div class="meta">Después corré <span class="mono">/mcp</span> en Claude Code para verlo conectado.</div>
+      </div>
+      <button id="mcp-copy">Copiar</button>
+    </div>
+    <pre class="mono mcpjson" id="mcp-json">…</pre>
+    <div class="note info">
+      Esa config lleva la <b>contraseña</b> de arriba adentro: tratala como tal.
+    </div>
+    <div id="mcp-tunnel"></div>
+  </section>
+
   <!-- ============ conectar la web ============ -->
   <section class="card">
     <h2>Conectar la web</h2>
     <ol class="steps">
-      <li>Abrí DiagraMind en el navegador y entrá a <b>IA → Conectar local</b>.</li>
+      <li>Abrí DiagraMinder en el navegador y entrá a <b>IA → Conectar backend</b>.</li>
       <li>Pegá la <b>contraseña</b> de arriba cuando te la pida.</li>
       <li>El estado del panel IA pasa a <b>Conectado</b> y ya podés chatear con los CLIs.</li>
     </ol>
@@ -293,6 +330,7 @@ function render(s) {
 
   renderClis(s);
   renderProjects(s);
+  renderMcp();
 
   $("tok-path").textContent = "Guardada en " + s.tokenPath;
   $("url-val").textContent = s.url;
@@ -305,9 +343,107 @@ function render(s) {
   $("srv-stop").hidden = s.autoStop;
   $("srv-note").innerHTML = s.autoStop
     ? "Cerrar esta ventana <strong>detiene el servidor</strong> y la web pierde la conexión. " +
-      "Para volver a levantarlo, abrí DiagraMind Local de nuevo."
+      "Para volver a levantarlo, abrí DiagraMinder de nuevo."
     : "Este backend arrancó solo con el sistema, así que <strong>sigue corriendo</strong> " +
       "aunque cierres esta ventana.";
+}
+
+/* ---------------- MCP: el interruptor y los niveles (doc 37 §F19) ----------------
+   El estado REAL vive en el backend (config.json). Acá se lee y se manda; si la
+   guarda viviera en esta página, apagarlo no apagaría nada — el cliente MCP ya
+   tiene la URL y el token y entra por su lado. */
+const MCP_NIVELES = [
+  ["diagrams", "Solo diagramas", "Leer y escribir tus diagramas. Nada más."],
+  ["files", "Diagramas + archivos",
+   "Además leer, escribir y buscar archivos — solo adentro de la carpeta que elijas."],
+  ["shell", "Diagramas + archivos + comandos",
+   "Además ejecutar comandos. Una carpeta no contiene a un comando: prendelo solo si sabés por qué."],
+];
+
+async function renderMcp() {
+  let pol;
+  try { pol = await api("/mcp/policy"); } catch (e) { return; }
+  $("mcp-on").checked = !!pol.enabled;
+  $("mcp-root").textContent = pol.root || "ninguna elegida";
+  $("mcp-pill").textContent = pol.enabled
+    ? (MCP_NIVELES.find((n) => n[0] === pol.mode) || [, pol.mode])[1] : "apagado";
+  $("mcp-lvls").innerHTML = MCP_NIVELES.map(([k, t, ayuda]) =>
+    '<label class="row mcp-lvl' + (pol.mode === k ? ' on' : '') + '"' +
+      (pol.enabled ? '' : ' style="opacity:.45;pointer-events:none"') + '>' +
+      '<input type="radio" name="mcp-mode" value="' + k + '"' +
+        (pol.mode === k ? ' checked' : '') + '>' +
+      '<div class="grow"><div class="name">' + t + '</div>' +
+      '<div class="meta">' + ayuda + '</div></div></label>').join("");
+  $("mcp-pick").disabled = !pol.enabled;
+  renderTunel(pol);
+  renderConfig();
+  $("mcp-on").onchange = (e) => mcpSet({enabled: e.target.checked});
+  [...document.querySelectorAll('input[name="mcp-mode"]')].forEach((r) => {
+    r.onchange = (e) => mcpSet({mode: e.target.value});
+  });
+}
+
+async function renderConfig() {
+  // La config REAL, no "corré un comando y pegá lo que salga": el programa ya sabe
+  // la respuesta, y hacerle correr un comando para averiguarla es trabajo que no
+  // le toca a quien está mirando esta pantalla.
+  try {
+    const d = await api("/mcp/config");
+    MCPJSON = JSON.stringify(d.config, null, 2);
+    $("mcp-json").textContent = MCPJSON;
+  } catch (e) { $("mcp-json").textContent = "no pude leer la config: " + e.message; }
+}
+let MCPJSON = "";
+
+function renderTunel(pol) {
+  // Claude web corre en los servidores de Anthropic: no puede hablarle a 127.0.0.1.
+  // El túnel le da una URL pública que entra acá. Se prende A MANO y muere al
+  // apagarlo — una URL que sobrevive al programa es una puerta que nadie recuerda.
+  const t = pol.tunnel || {};
+  const el = $("mcp-tunnel");
+  if (!el) return;
+  // cloudflared se muestra con la MISMA fila que los CLIs de arriba: es otra cosa que
+  // o la tenés o no la tenés, y verla en el mismo formato no necesita explicación.
+  const fila =
+    '<div class="row"><span class="dot ' + (t.installed ? 'ok' : '') + '"></span>' +
+    '<div class="grow"><div class="name">cloudflared</div>' +
+    '<div class="meta">' + (t.installed ? (t.version || 'instalado') : 'no instalado') + '</div></div></div>';
+  if (!t.installed) {
+    el.innerHTML = fila +
+      '<div class="note info">Para alcanzarlo desde <b>Claude web</b> hace falta ' +
+      '<span class="mono">cloudflared</span>. No te lo bajamos a propósito: es un programa ' +
+      'de internet y esa decisión es tuya. Instalalo con:<br><br>' +
+      '<span class="mono">' + t.install + '</span><br><br>' +
+      '<a href="' + t.download + '" target="_blank" rel="noopener">Otras formas de instalarlo</a>.</div>';
+    return;
+  }
+  el.innerHTML = fila +
+    '<label class="row" style="cursor:pointer"><input type="checkbox" id="tun-on"' +
+      (t.on ? ' checked' : '') + ' style="width:15px;height:15px">' +
+      '<div class="grow"><div class="name">Túnel público (para Claude web)</div>' +
+      '<div class="meta">Mientras esté prendido, quien tenga la dirección Y la contraseña ' +
+      'llega a esta máquina con el nivel de arriba.</div></div></label>' +
+    (t.on && t.url ? '<div class="row"><div class="grow"><div class="name">Dirección pública</div>' +
+      '<div class="meta mono">' + t.url + '/mcp</div></div>' +
+      // Los dos botones que hacen falta EN ESE MOMENTO: la dirección para pegar en
+      // Claude web, y la contraseña que te va a pedir a continuación. Tenerla acá
+      // evita ir a buscar token.txt en el medio del flujo.
+      '<button id="tun-copy">Copiar dirección</button>' +
+      '<button id="tun-copy-tok">Copiar contraseña</button></div>' : '') +
+    (t.error ? '<div class="note info">' + t.error + '</div>' : '');
+  $("tun-on").onchange = async (e) => {
+    e.target.disabled = true;
+    try { await api("/mcp/tunnel", {on: e.target.checked}); }
+    catch (err) { toast(err.message); }
+    renderMcp();
+  };
+}
+
+async function mcpSet(patch) {
+  // Se repinta con lo que el backend ACEPTÓ, no con lo que se clickeó: pedir un
+  // nivel de archivos sin carpeta elegida vuelve a diagramas, y hay que verlo.
+  try { await api("/mcp/policy", patch); } catch (e) { toast(e.message); }
+  renderMcp();
 }
 
 function renderClis(s) {
@@ -442,7 +578,7 @@ document.addEventListener("click", async (ev) => {
     case "tok-copy": copy(STATE.token, "Contraseña copiada"); break;
     case "tok-regen":
       if (!confirm("¿Generar una contraseña nueva?\n\nLa web va a perder la conexión hasta que " +
-                   "pegues la nueva en «Conectar local».")) break;
+                   "pegues la nueva en «Conectar backend».")) break;
       try {
         await api("/panel/token/regenerate", {});
         location.reload();          // la página se re-sirve ya con el token nuevo inyectado
@@ -452,10 +588,31 @@ document.addEventListener("click", async (ev) => {
     case "root-open":
       try { await api("/folders/reveal", {}); } catch (e) { toast(e.message); }
       break;
+    case "mcp-copy":
+      try { await navigator.clipboard.writeText(MCPJSON); toast("Config copiada"); }
+      catch (e) { toast(e.message); }
+      break;
+    case "tun-copy-tok":
+      try { await navigator.clipboard.writeText(STATE.token); toast("Contraseña copiada"); }
+      catch (e) { toast(e.message); }
+      break;
+    case "tun-copy":
+      try {
+        const pol = await api("/mcp/policy");
+        await navigator.clipboard.writeText((pol.tunnel || {}).url + "/mcp");
+        toast("Dirección copiada");
+      } catch (e) { toast(e.message); }
+      break;
+    case "mcp-pick":
+      try {
+        const d = await api("/folders/pick?title=Carpeta%20que%20el%20MCP%20puede%20tocar");
+        if (d.path) await mcpSet({root: d.path});
+      } catch (e) { toast(e.message); }
+      break;
     case "root-change":
       toast("Elegí la carpeta en el diálogo del sistema…");
       try {
-        const p = await api("/folders/pick?title=Carpeta%20de%20proyectos%20de%20DiagraMind");
+        const p = await api("/folders/pick?title=Carpeta%20de%20proyectos%20de%20DiagraMinder");
         if (p.path) { await api("/config/root", {path: p.path}); toast("Carpeta cambiada"); refresh(); }
       } catch (e) { toast(e.message); }
       break;

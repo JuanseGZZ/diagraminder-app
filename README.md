@@ -53,22 +53,71 @@ machine, so it connects by itself.
 
 ## Connect Claude Code to your diagrams
 
-This is the point of the whole thing. One command prints the config:
+This is the point of the whole thing.
+
+**Open `Settings → This program`.** It shows the exact `.mcp.json` for your machine —
+address and password already filled in — with a button to copy it. Paste it into
+`.mcp.json` in the root of your project and run `/mcp` in Claude Code to see it
+connected.
+
+If you would rather have it on the terminal, the same thing:
 
 ```bash
-DiagraMinder --mcp-config          # the packaged app
+DiagraMinder --mcp-config                 # the packaged app
 python3 backend/server.py --mcp-config    # running from source
 ```
 
-Paste the output into `.mcp.json` in your project, and Claude Code can read every
-diagram before touching your code — and write back what it did and what is left.
-In Claude Code, `/mcp` shows it connected.
+It looks like this — the address is where Claude Code will talk to the program, and
+the token is this program's password:
+
+```json
+{
+  "mcpServers": {
+    "diagraminder": {
+      "command": "/path/to/DiagraMinder",
+      "args": ["--mcp-diagrams"],
+      "env": {
+        "DMD_URL": "http://127.0.0.1:8765",
+        "DMD_TOKEN": "…this program's password…"
+      }
+    }
+  }
+}
+```
 
 Four tools: `list_diagrams`, `read_diagram`, `diagram_schema`, `write_diagram`.
 Writes show up **live** on your screen; no reload.
 
 > The config contains your access token. Treat it like a password: whoever has it can
 > read and change your projects.
+
+### What you let it do
+
+A switch with three levels, in **Settings → This program → What the MCP can do**. It
+starts **on** and at the lowest one:
+
+| Level | What the agent gets |
+|---|---|
+| **Diagrams only** *(default)* | the four tools above |
+| **Diagrams + files** | also read, write, edit, search, version and git — **only inside a folder you pick** |
+| **Diagrams + files + commands** | also run commands |
+
+Asking for a file level without picking a folder does **not** open your whole disk: it
+falls back to diagrams. The check lives in the program, not in the window — once the
+`.mcp.json` is pasted, the client already has the address and the password.
+
+### From Claude web
+
+Claude web runs on Anthropic's servers, so it cannot reach `127.0.0.1`. Under **Reach
+it from Claude web** the app can open a **Cloudflare tunnel** and show you a public
+address like `https://something.trycloudflare.com/mcp` — add that in Claude web as a
+custom connector, and it asks for this program's password once.
+
+It needs `cloudflared`. The panel tells you whether you have it and the exact command
+to install it (`brew install cloudflared` on macOS); **the app never downloads it for
+you**, and it never opens the tunnel on its own. While the tunnel is open, anyone with
+the address *and* the password reaches this machine at the level above. It dies when
+you turn it off or close the app.
 
 ---
 

@@ -3088,6 +3088,44 @@ body.full-board .backend-gate { margin-left: 0; }
 }
 .nav-pill svg { width: 15px; height: 15px; flex: 0 0 auto; }
 
+/* ===== Aviso de túnel abierto (doc 38) =====
+   Mientras esté, la máquina es alcanzable desde internet: tiene que verse desde
+   cualquier modo, sin abrir nada. Es DISCRETO a propósito —un punto que late y una
+   palabra— porque no es un error, es un estado que la persona eligió; pero el punto
+   se mueve, que es lo que hace que el ojo lo encuentre sin gritar. `.hidden` se
+   declara acá porque en styles.css no es global (regla dura). */
+.tunnel-badge {
+  height: 30px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 4px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  color: var(--warning);
+  font: 600 12px/1 'Inter', system-ui;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s, border-color .12s;
+}
+.tunnel-badge:hover { background: color-mix(in srgb, var(--warning) 22%, transparent); }
+.tunnel-badge.hidden { display: none; }
+.tunnel-badge-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex: none;
+  background: currentColor;
+  animation: tunnel-late 2.4s ease-in-out infinite;
+}
+/* Latido lento: dice "esto sigue pasando" sin pedir atención todo el tiempo. */
+@keyframes tunnel-late {
+  0%, 100% { opacity: 1;   box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 55%, transparent); }
+  50%      { opacity: .55; box-shadow: 0 0 0 4px transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tunnel-badge-dot { animation: none; }
+}
+
 /* ===== Paneles laterales derechos (IA / Perfil) ===== */
 .side-panel {
   position: fixed;
@@ -3262,6 +3300,9 @@ body.full-board .backend-gate { margin-left: 0; }
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* explícito: con overflow-y:auto el eje X computa a `auto` solo, y cualquier
+     hijo que no encoja le mete una barra horizontal al panel entero. */
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -3373,6 +3414,75 @@ body.full-board .backend-gate { margin-left: 0; }
           font: 12.5px var(--font-mono, ui-monospace, monospace); color: var(--text);
           overflow-wrap: anywhere; }
 .lp-warn { color: var(--danger); }
+
+/* ---- el interruptor del MCP, adentro del modal «This program» (doc 37 §F19) ---- */
+.lp-switch { display: flex; align-items: center; gap: 8px; padding: 4px 0 8px; cursor: pointer; }
+.lp-switch input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+.lp-switch span { font: 500 13px/1.4 'Inter', system-ui, sans-serif; color: var(--text); }
+.lp-lvls { display: flex; flex-direction: column; gap: 4px; }
+/* apagado, los niveles siguen VIÉNDOSE (para saber qué hay) pero no se tocan */
+.lp-lvls.is-off { opacity: .45; pointer-events: none; }
+.lp-lvl {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+}
+.lp-lvl:hover { border-color: var(--border-strong); }
+.lp-lvl.is-on { border-color: var(--accent); background: var(--accent-dim); }
+.lp-lvl input { margin-top: 2px; accent-color: var(--accent); cursor: pointer; }
+.lp-lvl span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lp-lvl b { font: 600 13px/1.35 'Inter', system-ui, sans-serif; color: var(--text); }
+.lp-lvl em {
+  font: 400 12px/1.45 'Inter', system-ui, sans-serif; font-style: normal;
+  color: var(--text-muted);
+}
+.lp-mcp-root { margin-top: 10px; }
+/* el .mcp.json listo para copiar: monoespaciado, scrolleable y sin desbordar */
+.lp-json {
+  max-height: 190px; overflow: auto; white-space: pre;
+  font: 400 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.lp-link { display: inline-block; margin-top: 6px; color: var(--accent); text-decoration: none; }
+.lp-link:hover { text-decoration: underline; }
+.lp-pick {
+  margin-top: 6px; padding: 7px 12px; border: 1px solid var(--border-strong);
+  border-radius: 8px; background: var(--surface); color: var(--text);
+  font: 500 13px/1 'Inter', system-ui, sans-serif; cursor: pointer;
+}
+.lp-pick:hover:not(:disabled) { border-color: var(--accent); }
+.lp-pick:disabled { opacity: .45; cursor: default; }
+.lp-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---- instalar un CLI desde el modal ---- */
+.lp-cli-get {
+  margin-left: 8px; padding: 3px 10px; border: 1px solid var(--accent);
+  border-radius: 6px; background: transparent; color: var(--accent);
+  font: 600 11.5px/1.5 'Inter', system-ui, sans-serif; cursor: pointer; flex: none;
+}
+.lp-cli-get:hover:not(:disabled) { background: var(--accent-dim); }
+.lp-cli-get:disabled { opacity: .5; cursor: default; }
+.lp-cli-cmd {
+  margin-left: 8px; padding: 2px 7px; border-radius: 5px; background: var(--bg);
+  border: 1px solid var(--border); color: var(--text-muted); flex: none;
+  font: 400 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lp-cli.is-working { opacity: .7; }
+.lp-cli-log {
+  max-height: 150px; overflow: auto; margin: 6px 0 0; padding: 8px 10px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  font: 400 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-muted); white-space: pre-wrap;
+}
+
+/* ---- la ruedita: abrir el túnel tarda hasta 25s ---- */
+.lp-spin {
+  width: 13px; height: 13px; flex: none; margin-left: 2px;
+  border: 2px solid var(--border-strong); border-top-color: var(--accent);
+  border-radius: 50%; animation: lp-gira .7s linear infinite;
+}
+@keyframes lp-gira { to { transform: rotate(360deg); } }
+.lp-switch.is-working { opacity: .8; }
+.lp-btns .lp-pick { flex: 1 1 auto; }
 #lp-overlay.hidden { display: none; }
 
 .ia-download {
@@ -3505,10 +3615,38 @@ body.full-board .backend-gate { margin-left: 0; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   padding: 6px 2px;
 }
-.side-panel-row-label { font: 500 13px/1.4 'Inter', system-ui, sans-serif; color: var(--text-muted); }
+.side-panel-row-label {
+  font: 500 13px/1.4 'Inter', system-ui, sans-serif;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
 .side-panel-row #theme-toggle { margin-left: 0; }
+
+/* El VALOR de una fila (una ruta de disco, que puede ser larguísima). Si no se
+   acota, el flex item no encoge —min-width:auto por default— y estira el panel:
+   como .side-panel-body tiene overflow-y:auto, el eje X computa a `auto` y
+   aparece una barra horizontal en TODO el panel de Ajustes. La barra va acá
+   adentro, en el valor, que es lo único que de verdad no entra. */
+.side-panel-row-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  font: 400 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text);
+  overscroll-behavior-x: contain;
+}
+.side-panel-row-value::-webkit-scrollbar { height: 6px; }
+.side-panel-row-value::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 99px;
+}
+.side-panel-row-value::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
 /* gestor de APIs (panel IA → "Agregar API") */
 .ia-apis {
@@ -3765,7 +3903,7 @@ body.full-board .backend-gate { margin-left: 0; }
 }
 .ia-chat-slash-name { font: 600 13px/1.3 'Inter', system-ui; color: var(--accent); }
 
-/* "Connect to local" / "Add API key": acciones, no backends más de la lista */
+/* "Connect backend" / "Add API key": acciones, no backends más de la lista */
 .ia-chat-menu-action { justify-content: flex-start; color: var(--accent); }
 .ia-chat-menu-action:not(:first-child) {
   margin-top: 4px;

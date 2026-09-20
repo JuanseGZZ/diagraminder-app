@@ -46,7 +46,7 @@ import urllib.error
 import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 # módulos desacoplados (ver claude.py / codex.py / gemini.py / cli_base.py / etc.)
 from util import safe_name, safe_file_name
@@ -69,7 +69,7 @@ DEFAULT_PORT = 8765
 # del orquestador necesitan la URL propia para hablarle al MCP del editor.
 PORT = DEFAULT_PORT
 NAME = "DiagraMinder"
-VERSION = "0.34.0"   # MCP de diagramas, actualizaciones, y sirve la app web
+VERSION = "0.35.0"   # el MCP se prende/apaga, tres niveles, y sale por un túnel con OAuth
 
 # ===================== rutas / disco =====================
 
@@ -188,6 +188,72 @@ def projects_dir():
     if _ROOT is None:
         _ROOT = _load_config().get("root") or os.path.join(app_dir(), "projects")
     return _ROOT
+
+
+# ===================== política del MCP (doc 37 §F19) =====================
+# Qué puede hacer un cliente MCP: el interruptor y el nivel. Vive en config.json y se
+# lee en cada request a propósito — apagar el MCP tiene que apagarlo YA, no en el
+# próximo arranque, porque el cliente de afuera ya tiene la URL y el token.
+
+# El servidor OAuth del MCP remoto (doc 37 §F19). Una instancia por proceso: su
+# estado vive en memoria, así que reiniciar el backend revoca todo lo emitido.
+_OAUTH = None
+
+
+def oauth():
+    global _OAUTH
+    if _OAUTH is None:
+        import mcp_oauth
+        _OAUTH = mcp_oauth.OAuth()
+    return _OAUTH
+
+
+def mcp_config_json():
+    """El `.mcp.json` listo para pegar. Lo usan `--mcp-config` y la UI: tenerlo en UN
+    solo lugar evita que la pantalla muestre una cosa y el flag imprima otra —
+    justamente el tipo de diferencia que hace que alguien copie lo que no anda."""
+    exe = sys.executable if getattr(sys, "frozen", False) else None
+    cmd = [exe] if exe else [sys.executable, os.path.abspath(__file__)]
+    return {"mcpServers": {"diagraminder": {
+        "command": cmd[0],
+        "args": cmd[1:] + ["--mcp-diagrams"],
+        "env": {"DMD_URL": f"http://{HOST}:{PORT}", "DMD_TOKEN": get_token()},
+    }}}
+
+
+# El projectId reservado del MCP. No es un proyecto de verdad: es la forma de darle
+# al MCP una carpeta confinada sin duplicar editorfs.
+MCP_PID = "__mcp__"
+
+
+def mcp_policy():
+    import mcp_policy as _mp
+    return _mp.normalizar(_load_config().get("mcp"))
+
+
+def set_mcp_policy(patch):
+    """Aplica un patch parcial y devuelve la política normalizada resultante."""
+    import mcp_policy as _mp
+    cfg = _load_config()
+    actual = dict(_mp.normalizar(cfg.get("mcp")))
+    for k in ("enabled", "mode", "root", "remote"):
+        if k in patch:
+            actual[k] = patch[k]
+    nueva = _mp.normalizar(actual)
+    # La carpeta del MCP se registra como target de un projectId RESERVADO. Así las
+    # tools de archivo pegan contra el MISMO /fs que ya usan los agentes confinados
+    # del orquestador, y heredan su confinamiento (realpath + prefijo, symlinks
+    # incluidos) en vez de estrenar uno nuevo que habría que volver a probar.
+    if nueva.get("root"):
+        try:
+            editorfs.set_target(app_dir(), MCP_PID, nueva["root"])
+        except Exception:
+            pass
+    cfg["mcp"] = nueva
+    os.makedirs(app_dir(), exist_ok=True)
+    with open(config_path(), "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    return nueva
 
 
 def set_root(path):
@@ -730,6 +796,12 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
     def _read_json(self):
+        # El body se puede leer UNA sola vez del socket. El portero del MCP necesita
+        # mirarlo antes de rutear (el projectId viaja adentro), así que lo cachea acá
+        # y la ruta lo recibe igual que siempre.
+        cache = getattr(self, "_body_cache", None)
+        if cache is not None:
+            return cache
         length = int(self.headers.get("Content-Length") or 0)
         if not length:
             return {}
@@ -752,13 +824,13 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _html(self, body):
+    def _html(self, body, status=200):
         """La página del panel. A propósito SIN cabeceras CORS: lleva el token
         inyectado, y sin Access-Control-Allow-Origin el navegador no deja que otra
         web lea la respuesta. frame-ancestors/X-Frame-Options evitan que la metan en
         un iframe para robarle clics a los botones (detener, regenerar)."""
         data = body.encode("utf-8")
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Frame-Options", "DENY")
@@ -822,6 +894,162 @@ class Handler(BaseHTTPRequestHandler):
             html = inject + html
         self._html(html)
 
+    def _read_form(self):
+        """Body de un POST OAuth. La spec usa form-encoding; algunos clientes mandan
+        JSON igual, así que se aceptan los dos en vez de fallar con un 400 mudo."""
+        length = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(length).decode("utf-8", "replace") if length else ""
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+        if ctype == "application/json":
+            try:
+                return json.loads(raw or "{}")
+            except Exception:
+                return {}
+        return {k: v[0] for k, v in parse_qs(raw, keep_blank_values=True).items()}
+
+    def _oauth_pagina(self, q, cli_nombre, error=None, status=200):
+        """La pantalla de consentimiento, con el nivel que se está por conceder: hay
+        que decir QUÉ va a poder hacer el que entra, no solo pedir una contraseña."""
+        import mcp_oauth
+        pol = mcp_policy()
+        etiquetas = {"diagrams": "solo diagramas",
+                     "files": "diagramas + archivos",
+                     "shell": "diagramas + archivos + comandos"}
+        campos = {k: q.get(k, "") for k in
+                  ("client_id", "redirect_uri", "response_type", "code_challenge",
+                   "code_challenge_method", "state", "scope", "resource")}
+        self._html(mcp_oauth.consent_page(
+            self._origen(), cli_nombre, campos, error=error,
+            nivel=etiquetas.get(pol.get("mode"), pol.get("mode")),
+            carpeta=pol.get("root") or ""), status=status)
+
+    def _oauth_authorize_get(self, q):
+        fatal, ctx = oauth().leer_authz(q)
+        # Un client_id o un redirect_uri malos NO se pueden reportar redirigiendo:
+        # eso ES el agujero de open redirect. Se muestran acá.
+        if fatal:
+            self._text(400, f"Authorization error: {fatal}")
+            return
+        if ctx.get("oauth_error"):
+            self._oauth_redirect_error(q, ctx["oauth_error"])
+            return
+        self._oauth_pagina(q, ctx["client"]["client_name"])
+
+    def _oauth_authorize_post(self, q):
+        fatal, ctx = oauth().leer_authz(q)
+        if fatal:
+            self._text(400, f"Authorization error: {fatal}")
+            return
+        if ctx.get("oauth_error"):
+            self._oauth_redirect_error(q, ctx["oauth_error"])
+            return
+        code, err = oauth().aprobar(q, get_token(), self._origen())
+        if err:
+            self._oauth_pagina(q, ctx["client"]["client_name"], error=err, status=401)
+            return
+        destino = list(urlparse(q.get("redirect_uri")))
+        params = parse_qs(destino[4], keep_blank_values=True)
+        params["code"] = [code]
+        if q.get("state"):
+            params["state"] = [q["state"]]
+        params["iss"] = [self._origen()]            # RFC 9207
+        destino[4] = urlencode(params, doseq=True)
+        self._redirect(urlunparse(destino))
+
+    def _oauth_redirect_error(self, q, error):
+        destino = list(urlparse(q.get("redirect_uri")))
+        params = parse_qs(destino[4], keep_blank_values=True)
+        params["error"] = [error]
+        if q.get("state"):
+            params["state"] = [q["state"]]
+        params["iss"] = [self._origen()]
+        destino[4] = urlencode(params, doseq=True)
+        self._redirect(urlunparse(destino))
+
+    def _redirect(self, url):
+        self.send_response(302)
+        self.send_header("Location", url)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _text(self, status, txt):
+        cuerpo = txt.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(cuerpo)))
+        self.end_headers()
+        self.wfile.write(cuerpo)
+
+    def _origen(self):
+        """El origen PÚBLICO de esta request. Detrás del túnel el Host y el
+        X-Forwarded-Proto son los de la URL de afuera, que es la que el cliente
+        OAuth tiene que ver en la metadata: si devolviéramos 127.0.0.1, el
+        redirect_uri y la audiencia no cerrarían nunca."""
+        proto = (self.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip()
+        host = self.headers.get("Host") or f"127.0.0.1:{PORT}"
+        if not proto:
+            proto = "https" if not host.startswith("127.0.0.1") else "http"
+        return f"{proto}://{host}"
+
+    def _mcp_rpc(self, body):
+        """POST /mcp — el MCP por HTTP (Streamable HTTP, sin sesión: una request,
+        una respuesta). Mismo despacho que el stdio, a propósito: dos despachos se
+        habrían ido separando y el remoto habría quedado sin alguna guarda."""
+        import diagram_mcp
+        pol = mcp_policy()
+        if not pol.get("remote"):
+            self._json(403, {"jsonrpc": "2.0", "id": None, "error": {
+                "code": -32001,
+                "message": "remote MCP is off. The user must turn it on in DiagraMinder → Settings."}})
+            return
+        diagram_mcp.configurar(f"http://127.0.0.1:{PORT}", get_token())
+        # Un batch JSON-RPC es una lista; un mensaje suelto, un objeto.
+        if isinstance(body, list):
+            out = [r for r in (diagram_mcp.handle(m) for m in body) if r is not None]
+            self._json(200, out if out else [])
+            return
+        r = diagram_mcp.handle(body)
+        # Una notificación no lleva respuesta: 202 sin cuerpo es lo que espera la spec.
+        if r is None:
+            self.send_response(202)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        self._json(200, r)
+
+    def _mcp_auth_ok(self):
+        """¿Viene con un bearer válido? Si no, 401 con el WWW-Authenticate que le
+        dice al cliente DÓNDE está la metadata para arrancar el flujo OAuth."""
+        origen = self._origen()
+        ok, err, desc = oauth().verificar(self.headers.get("Authorization"),
+                                          get_token(), origen)
+        if ok:
+            return True
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", oauth().challenge_header(origen, err, desc))
+        self.send_header("Content-Type", "application/json")
+        cuerpo = json.dumps({"jsonrpc": "2.0", "id": None, "error": {
+            "code": -32001, "message": desc or "Unauthorized"}}).encode()
+        self.send_header("Content-Length", str(len(cuerpo)))
+        self.end_headers()
+        self.wfile.write(cuerpo)
+        return False
+
+    def _mcp_gate(self, path, pid):
+        """¿Puede el MCP hacer esta operación de archivos? Se chequea EN EL SERVIDOR
+        y por la red, no en el cliente: el que tiene el `.mcp.json` ya tiene la URL y
+        el token, así que un chequeo del lado del MCP no sería una regla (CLAUDE.md).
+        Devuelve un texto si hay que rechazar, o None si pasa."""
+        if pid != MCP_PID:
+            return None
+        import mcp_policy as _mp
+        pol = mcp_policy()
+        tool = "fs_exec" if path == "/fs/exec" else (
+            "fs_read" if path.startswith(("/fs/", "/sv/", "/svgit/")) else None)
+        if tool and not _mp.permite(pol, tool):
+            return _mp.motivo(pol, tool)
+        return None
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -833,6 +1061,29 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html") and web_dir():
             self._app_page()
             return
+        # --- OAuth del MCP remoto (doc 37 §F19) ---------------------------------
+        # Estas rutas van SIN el token del backend a propósito: son justamente las
+        # que un cliente usa para averiguar CÓMO autenticarse. No entregan nada:
+        # la metadata es pública por spec, y /authorize pide la contraseña.
+        if path in ("/.well-known/oauth-protected-resource",
+                    "/.well-known/oauth-protected-resource/mcp"):
+            self._json(200, oauth().protected_resource(self._origen()))
+            return
+        if path in ("/.well-known/oauth-authorization-server",
+                    "/.well-known/oauth-authorization-server/mcp",
+                    "/.well-known/openid-configuration"):
+            self._json(200, oauth().as_metadata(self._origen()))
+            return
+        if path == "/oauth/authorize":
+            self._oauth_authorize_get({k: v[0] for k, v in q.items()})
+            return
+        if path == "/mcp":
+            # En modo sin sesión el GET no aplica. Se contesta 405 con sentido en
+            # vez de un 404 que haría pensar que el endpoint no existe.
+            self._json(405, {"jsonrpc": "2.0", "id": None, "error": {
+                "code": -32000, "message": "Method not allowed. Use POST."}})
+            return
+
         if path in ("/", "/panel", "/index.html"):
             self._html(panel_ui.page(get_token()))
             return
@@ -880,6 +1131,22 @@ class Handler(BaseHTTPRequestHandler):
             self._folders_read(q.get("path", [None])[0])
         elif path == "/config":
             self._json(200, {"root": projects_dir(), "base": app_dir()})
+        # --- qué puede hacer el MCP (doc 37 §F19) ---
+        elif path == "/mcp/config":
+            # Lo que hay que pegar en .mcp.json, servido para que la UI lo muestre
+            # tal cual y con un botón de copiar. Decirle a alguien "corré un comando
+            # y pegá lo que salga" cuando la app YA sabe la respuesta es hacerle
+            # hacer un trabajo que no le toca.
+            self._json(200, {"config": mcp_config_json(),
+                             "command": "DiagraMinder --mcp-config"
+                                        if getattr(sys, "frozen", False)
+                                        else f"python3 {os.path.abspath(__file__)} --mcp-config"})
+        elif path == "/mcp/policy":
+            import mcp_policy as _mp
+            import tunnel
+            pol = mcp_policy()
+            self._json(200, dict(pol, tools=list(_mp.herramientas(pol)),
+                                 levels=list(_mp.NIVELES), tunnel=tunnel.estado()))
         # --- actualizaciones (doc 37 §F17) ---
         elif path == "/update/check":
             import updater
@@ -898,6 +1165,9 @@ class Handler(BaseHTTPRequestHandler):
         # --- modo editor (doc 27; contrato unificado con el conector externo) ---
         elif path == "/editor/target":
             self._json(200, {"path": editorfs.get_target(app_dir(), q.get("projectId", [None])[0])})
+        elif path.startswith(("/fs/", "/sv/", "/svgit/")) and \
+                (_veto := self._mcp_gate(path, q.get("projectId", [None])[0])):
+            self._json(403, {"error": _veto})
         elif path == "/fs/tree":
             self._json(*editorfs.fs_tree(app_dir(), q.get("projectId", [None])[0], q.get("dir", [""])[0]))
         elif path == "/fs/read":
@@ -996,9 +1266,37 @@ class Handler(BaseHTTPRequestHandler):
             # (se lo diste al sistema externo), no el token local de la web.
             self._orch_hook(path)
             return
+        # --- OAuth del MCP remoto (doc 37 §F19): sin token del backend ----------
+        if path == "/oauth/register":
+            self._json(*oauth().registrar(self._read_json()))
+            return
+        if path == "/oauth/authorize":
+            self._oauth_authorize_post(self._read_form())
+            return
+        if path == "/oauth/token":
+            self._json(*oauth().token(self._read_form()))
+            return
+        if path == "/mcp":
+            # El MCP remoto NO se autentica con el token del backend en la query:
+            # se autentica con el bearer del header (o la contraseña como bearer).
+            # Una URL termina en el log de cada proxy del túnel; un header, no.
+            if not self._mcp_auth_ok():
+                return
+            self._mcp_rpc(self._read_json())
+            return
+
         if not self._auth_ok():
             self._json(401, {"error": "unauthorized"})
             return
+        # Portero del MCP: cualquier operación de archivos sobre su projectId
+        # reservado pasa por la política ANTES de rutear, así una ruta nueva de la
+        # familia /fs no puede olvidarse de chequear.
+        if path.startswith(("/fs/", "/sv/", "/svgit/")):
+            self._body_cache = self._read_json()
+            veto = self._mcp_gate(path, self._body_cache.get("projectId"))
+            if veto:
+                self._json(403, {"error": veto})
+                return
         if path == "/projects/sync":
             self._sync(self._read_json())
         elif path == "/files/upload":
@@ -1007,6 +1305,10 @@ class Handler(BaseHTTPRequestHandler):
             self._folders_reveal(self._read_json())
         elif path == "/config/root":
             self._config_root(self._read_json())
+        elif path == "/mcp/policy":
+            self._mcp_policy(self._read_json())
+        elif path == "/mcp/tunnel":
+            self._mcp_tunnel(self._read_json())
         # --- panel de control (doc 18) ---
         elif path == "/panel/install":
             self._panel_install(self._read_json())
@@ -1355,6 +1657,52 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"treeJson": f.read()})
 
     # --- config (ruta raíz donde el conector guarda todas las carpetas) ---
+    def _mcp_policy(self, body):
+        """Cambia qué puede hacer el MCP. Solo acepta las claves conocidas: un patch
+        con basura no puede ampliar permisos por accidente."""
+        import mcp_policy as _mp
+        patch = {}
+        if "enabled" in body:
+            patch["enabled"] = bool(body.get("enabled"))
+        if "remote" in body:
+            patch["remote"] = bool(body.get("remote"))
+        if "mode" in body:
+            m = body.get("mode")
+            if m not in _mp.NIVELES:
+                self._json(400, {"error": f"mode inválido: {m!r} (son {', '.join(_mp.NIVELES)})"})
+                return
+            patch["mode"] = m
+        if "root" in body:
+            r = (body.get("root") or "").strip()
+            # Una raíz que no existe se rechaza acá: si se guardara, el modo caería a
+            # "diagrams" sin decir por qué y parecería que el switch no anda.
+            if r and not os.path.isdir(r):
+                self._json(400, {"error": f"esa carpeta no existe: {r}"})
+                return
+            patch["root"] = r
+        pol = set_mcp_policy(patch)
+        self._json(200, dict(pol, tools=list(_mp.herramientas(pol)),
+                             levels=list(_mp.NIVELES)))
+
+    def _mcp_tunnel(self, body):
+        """Prende o apaga el túnel. Nunca se prende solo: exponer tu máquina a
+        internet no puede ser un default, tiene que ser un acto."""
+        import tunnel
+        tunnel.set_puerto(PORT)
+        if body.get("on"):
+            # Un túnel abierto sin MCP remoto habilitado es una puerta a ningún lado;
+            # peor, es una puerta que el usuario cree cerrada. Se habilita junto.
+            set_mcp_policy({"remote": True})
+            ok, detalle = tunnel.abrir()
+            if not ok:
+                set_mcp_policy({"remote": False})
+                self._json(400, {"error": detalle, "tunnel": tunnel.estado()})
+                return
+        else:
+            tunnel.cerrar()
+            set_mcp_policy({"remote": False})
+        self._json(200, {"tunnel": tunnel.estado(), "policy": mcp_policy()})
+
     def _config_root(self, body):
         path = (body.get("path") or "").strip()
         if not path:
@@ -1500,10 +1848,21 @@ class Handler(BaseHTTPRequestHandler):
         watcher aún no consumió (la IA/Claude Code lo escribió hace <0.5s), NO se
         escribe: se emite ese cambio por SSE y se responde 409. Sin esto, la
         versión vieja de la web pisaba la de la IA y —peor— el mtime quedaba
-        marcado como visto, así que el cambio externo se perdía en silencio."""
+        marcado como visto, así que el cambio externo se perdía en silencio.
+
+        ⚠️ `origin` (bug 2026-09-19): marcar el mtime como visto es correcto SOLO si
+        quien escribe es la WEB — ella ya tiene el contenido, y emitirlo sería
+        devolverle su propio eco. El MCP usa este MISMO endpoint, así que heredaba
+        una supresión pensada para otro: escribía, el watcher quedaba mudo, la web
+        nunca se enteraba y al rato le pisaba encima su copia vieja. El agente veía
+        un 200 y el usuario no veía nada. Con `origin != "web"` el cambio se EMITE
+        por SSE, que es justamente lo que hace que el canvas se mueva solo."""
         folder = body.get("folder") or "Local"
         name = body.get("name") or body.get("id")
         tree_json = body.get("treeJson")
+        # Quién escribe. Por defecto "web" para no cambiarle el comportamiento a
+        # nadie que ya use este endpoint sin decirlo.
+        origin = (body.get("origin") or "web").strip().lower()
         if not name or tree_json is None:
             self._json(400, {"error": "faltan name/id o treeJson"})
             return
@@ -1537,11 +1896,16 @@ class Handler(BaseHTTPRequestHandler):
                 return
             with open(fp, "w", encoding="utf-8") as f:
                 f.write(text)
+            seq = (prev or {}).get("seq", 0)
+            if origin != "web":
+                # No lo escribió la web: hay que AVISARLE. Si no, este cambio no
+                # existe para ella y su próximo sync lo borra.
+                seq = _emit_state(folder, resolve_tree_id(folder, safe_name(name)), text)
             try:
-                STATE[key] = {"mtime": os.path.getmtime(fp), "seq": (prev or {}).get("seq", 0)}
+                STATE[key] = {"mtime": os.path.getmtime(fp), "seq": seq}
             except OSError:
                 pass
-        self._json(200, {"ok": True})
+        self._json(200, {"ok": True, "emitted": origin != "web"})
 
     def _chat(self, body):
         pid = body.get("projectId")
@@ -1762,6 +2126,15 @@ def _panel_gone():
         if PANELS:
             return                      # volvió (recarga): seguimos vivos
     print("Panel cerrado → apagando el backend local.")
+    # El túnel es un proceso HIJO: si nos vamos con os._exit sin bajarlo, cloudflared
+    # queda vivo y la URL pública sigue respondiendo con el backend muerto detrás.
+    # Una puerta abierta que nadie recuerda haber dejado es exactamente lo que este
+    # diseño quiere evitar.
+    try:
+        import tunnel
+        tunnel.cerrar()
+    except Exception:
+        pass
     os._exit(0)
 
 
@@ -1825,13 +2198,7 @@ def main():
     # persona arme a mano un JSON con la ruta del binario y el token — y un token mal
     # copiado falla con un error que no dice nada.
     if "--mcp-config" in sys.argv:
-        exe = sys.executable if getattr(sys, "frozen", False) else None
-        cmd = [exe] if exe else [sys.executable, os.path.abspath(__file__)]
-        cfg = {"mcpServers": {"diagraminder": {
-            "command": cmd[0],
-            "args": cmd[1:] + ["--mcp-diagrams"],
-            "env": {"DMD_URL": f"http://{HOST}:{DEFAULT_PORT}", "DMD_TOKEN": get_token()},
-        }}}
+        cfg = mcp_config_json()
         print(json.dumps(cfg, indent=2, ensure_ascii=False))
         print("\n# Pegalo en .mcp.json (en la raíz de tu proyecto) o corré:", file=sys.stderr)
         print("#   claude mcp add-json diagraminder '<el objeto de adentro de mcpServers>'",

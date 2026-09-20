@@ -27,6 +27,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import editor_mcp as _fs
+import mcp_policy as _mp
+
 BASE = ""
 TOKEN = ""
 
@@ -203,12 +206,70 @@ def call_tool(name, args):
         if previo and obj.get("type") != previo:
             return (f"this diagram is of type '{previo}' and your JSON says '{obj.get('type')}'. "
                     "Changing the type would break it — keep it as it was."), True
-        _, err = _api("/state/write", {"folder": folder, "name": nombre_real, "treeJson": obj})
+        # `origin` importa: sin él el backend marca el mtime como ya visto —la
+        # supresión de eco pensada para la web— y el cambio NO se emite por SSE.
+        # El agente veía un 200, el usuario no veía nada, y el siguiente sync de la
+        # web le pasaba por encima. Decir quién escribe es lo que hace que el
+        # canvas se mueva solo (bitácora 2026-09-19).
+        res, err = _api("/state/write", {"folder": folder, "name": nombre_real,
+                                         "treeJson": obj, "origin": "mcp"})
         if err:
             return err, True
+        # Y no se promete lo que no se verificó: si el backend NO lo emitió, la web
+        # no se enteró, y decir "ya lo ve en pantalla" sería mentirle al modelo.
+        if isinstance(res, dict) and not res.get("emitted"):
+            return (f"'{nombre_real}' was written to disk, but the app was NOT notified, "
+                    "so the user may not see it yet and an app-side save could overwrite "
+                    "it. Tell the user to reopen the diagram."), True
         return f"OK: '{nombre_real}' updated. The user can see it on screen already.", False
 
     return f"unknown tool: {name}", True
+
+
+# Las descripciones de editor_mcp hablan del "editor project" y del "connector":
+# los dos se borraron en F3/F8. Acá el contexto es OTRO —una carpeta que el usuario
+# eligió en Ajustes— así que se reescriben las que mentirían. Es la regla de las
+# skills: el modelo construye con lo que la descripción le contó que existe.
+_REDESCRIBIR = {
+    "fs_tree": ("Lists ONE level of the folder the user gave DiagraMinder's MCP "
+                "([{name, dir, size}], dirs first, capped at 500). Empty dir = that "
+                "folder's root; for subdirs pass their relative path."),
+    "fs_exec": ("Runs a shell command with cwd in the folder the user gave "
+                "DiagraMinder's MCP (60s timeout). Only available when the user set "
+                "the MCP level to 'shell'; a 403 means they did not — don't insist."),
+}
+
+
+def _tools_de_archivos():
+    fuera = []
+    for t in _fs.TOOLS:
+        t = dict(t)
+        if t["name"] in _REDESCRIBIR:
+            t["description"] = _REDESCRIBIR[t["name"]]
+        else:
+            t["description"] = t["description"].replace(
+                "the editor project", "the folder the user gave DiagraMinder's MCP")
+        fuera.append(t)
+    return fuera
+
+
+TOOLS = TOOLS + _tools_de_archivos()
+_NOMBRES_FS = {t["name"] for t in _fs.TOOLS}
+
+
+def _policy():
+    """La política vigente, preguntada al backend. Si el backend no contesta se cae al
+    nivel MÁS BAJO (solo diagramas) en vez de al más alto: ante la duda, menos permisos.
+    No se cachea — apagar el interruptor tiene que valer en la llamada siguiente."""
+    pol, err = _api("/mcp/policy")
+    if err or not isinstance(pol, dict):
+        return dict(_mp.DEFAULT)
+    return _mp.normalizar(pol)
+
+
+def _tools_visibles():
+    permitidas = set(_mp.herramientas(_policy()))
+    return [t for t in TOOLS if t["name"] in permitidas]
 
 
 def _reply(mid, result=None, error=None):
@@ -221,13 +282,76 @@ def _reply(mid, result=None, error=None):
     sys.stdout.flush()
 
 
-def main():
+def configurar(base, token):
+    """Apunta este módulo (y el de archivos) a un backend. Lo llaman los DOS
+    transportes: el stdio de `--mcp-diagrams` y el HTTP de `POST /mcp`."""
     global BASE, TOKEN
-    BASE = (os.environ.get("DMD_URL") or "http://127.0.0.1:8765").rstrip("/")
-    TOKEN = os.environ.get("DMD_TOKEN") or ""
-    if not TOKEN:
+    BASE = (base or "http://127.0.0.1:8765").rstrip("/")
+    TOKEN = token or ""
+    # Las tools de archivos van por editor_mcp contra ESE backend: AUTH="local" es
+    # el header X-DiagraMind-Token, y el projectId reservado es el que tiene como
+    # target la carpeta que el usuario eligió (server.py → MCP_PID).
+    _fs.BASE, _fs.TOKEN, _fs.AUTH, _fs.PROJECT = BASE, TOKEN, "local", "__mcp__"
+
+
+def handle(msg):
+    """Un mensaje JSON-RPC → su respuesta (dict), o None si no lleva respuesta.
+
+    Está separado del transporte a propósito: el mismo despacho atiende el stdio de
+    Claude Code y el POST /mcp del túnel (doc 37 §F19). Duplicarlo garantizaba que
+    los dos caminos se fueran separando: el remoto terminaría sin alguna guarda.
+    """
+    mid = msg.get("id")
+    method = msg.get("method") or ""
+    params = msg.get("params") or {}
+
+    if method.startswith("notifications/"):
+        return None                                    # las notificaciones no se responden
+    if method == "initialize":
+        return _ok(mid, {
+            "protocolVersion": params.get("protocolVersion") or "2024-11-05",
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": "diagraminder", "version": "1.0.0"},
+        })
+    if method == "ping":
+        return _ok(mid, {})
+    if method == "tools/list":
+        # La lista se arma con la política DEL MOMENTO, no con la del arranque: si
+        # el usuario apaga el MCP mientras el cliente está conectado, la próxima
+        # lista ya viene vacía. Y las tools que el nivel no habilita NO aparecen:
+        # que no existan se entiende solo; que existan y sean rechazadas, no.
+        return _ok(mid, {"tools": _tools_visibles()})
+    if method == "tools/call":
+        # Una excepción acá NO puede matar el server: el cliente perdería la sesión
+        # entera por una tool que falló. Se devuelve como error de la tool y sigue.
+        nombre = params.get("name") or ""
+        try:
+            pol = _policy()
+            if not _mp.permite(pol, nombre):
+                text, is_err = _mp.motivo(pol, nombre), True
+            elif nombre in _NOMBRES_FS:
+                text, is_err = _fs.call_tool(nombre, params.get("arguments") or {})
+            else:
+                text, is_err = call_tool(nombre, params.get("arguments") or {})
+        except Exception as e:
+            text, is_err = f"the tool failed: {type(e).__name__}: {e}", True
+        return _ok(mid, {"content": [{"type": "text", "text": text}], "isError": is_err})
+    if mid is not None:
+        return {"jsonrpc": "2.0", "id": mid,
+                "error": {"code": -32601, "message": f"method not found: {method}"}}
+    return None
+
+
+def _ok(mid, result):
+    return {"jsonrpc": "2.0", "id": mid, "result": result}
+
+
+def main():
+    token = os.environ.get("DMD_TOKEN") or ""
+    if not token:
         print("falta DMD_TOKEN (el token del backend; lo imprime `--mcp-config`)", file=sys.stderr)
         sys.exit(2)
+    configurar(os.environ.get("DMD_URL"), token)
 
     for line in sys.stdin:
         line = line.strip()
@@ -237,32 +361,10 @@ def main():
             msg = json.loads(line)
         except json.JSONDecodeError:
             continue
-        mid = msg.get("id")
-        method = msg.get("method") or ""
-        params = msg.get("params") or {}
-
-        if method.startswith("notifications/"):
-            continue                                   # las notificaciones no se responden
-        if method == "initialize":
-            _reply(mid, {
-                "protocolVersion": params.get("protocolVersion") or "2024-11-05",
-                "capabilities": {"tools": {}},
-                "serverInfo": {"name": "diagraminder", "version": "1.0.0"},
-            })
-        elif method == "ping":
-            _reply(mid, {})
-        elif method == "tools/list":
-            _reply(mid, {"tools": TOOLS})
-        elif method == "tools/call":
-            # Una excepción acá NO puede matar el server: el cliente perdería la sesión
-            # entera por una tool que falló. Se devuelve como error de la tool y sigue.
-            try:
-                text, is_err = call_tool(params.get("name") or "", params.get("arguments") or {})
-            except Exception as e:
-                text, is_err = f"the tool failed: {type(e).__name__}: {e}", True
-            _reply(mid, {"content": [{"type": "text", "text": text}], "isError": is_err})
-        elif mid is not None:
-            _reply(mid, error={"code": -32601, "message": f"method not found: {method}"})
+        r = handle(msg)
+        if r is not None:
+            sys.stdout.write(json.dumps(r, ensure_ascii=False) + "\n")
+            sys.stdout.flush()
 
 
 if __name__ == "__main__":
