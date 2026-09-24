@@ -85,7 +85,14 @@ the token is this program's password:
 }
 ```
 
-Four tools: `list_diagrams`, `read_diagram`, `diagram_schema`, `write_diagram`.
+Four tools to work with a diagram as JSON: `list_diagrams`, `read_diagram`,
+`diagram_schema`, `write_diagram`.
+
+And eight to use organigrams and canvases as a **memory**, a node at a time, without
+reading or rewriting the whole file: `memory_overview` (the map), `memory_search`,
+`memory_read` (a few nodes with their neighbours), `memory_add` (a child, sibling or
+parent next to another node, in a free spot), `memory_update` (edit or append),
+`memory_link` / `memory_unlink` (canvas arrows) and `memory_delete`.
 Writes show up **live** on your screen; no reload.
 
 > The config contains your access token. Treat it like a password: whoever has it can
@@ -98,7 +105,7 @@ starts **on** and at the lowest one:
 
 | Level | What the agent gets |
 |---|---|
-| **Diagrams only** *(default)* | the four tools above |
+| **Diagrams only** *(default)* | the diagram and memory tools above |
 | **Diagrams + files** | also read, write, edit, search, version and git — **only inside a folder you pick** |
 | **Diagrams + files + commands** | also run commands |
 
