@@ -4060,14 +4060,6 @@ body.full-board .backend-gate { margin-left: 0; }
   cursor: pointer;
   transition: background .12s, border-color .12s, color .12s;
 }
-/* el atajo principal (/startproyect) se distingue de los otros dos */
-.ia-chat-suggestion.is-primary {
-  border-color: var(--accent);
-  background: var(--accent-dim);
-  color: var(--accent);
-  font-weight: 600;
-}
-.ia-chat-suggestion.is-primary:hover { border-color: var(--accent); filter: brightness(1.12); }
 .ia-chat-suggestion:hover { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
 .ia-chat-suggestion svg { flex: 0 0 auto; opacity: .85; }
 .ia-chat-msg {
@@ -5563,6 +5555,61 @@ a.dm-btn-primary, a.dm-btn-secondary { text-decoration: none; display: inline-fl
 .dm-card:hover{border-color:var(--border-strong);transform:translateY(-2px)}
 .dm-card-flagship{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-dim)}
 .dm-card-flagship:hover{border-color:var(--accent)}
+
+/* ===== Home: el onboarding (dos caminos, cada uno una tabla de pasos) =====
+   Las pestañas son dos radios escondidos + <label>: cambiar de camino no necesita JS
+   (y el ofuscador no tiene nada que romper). El panel que se ve lo decide `:checked ~`,
+   así que los radios tienen que ir ANTES que las pestañas y las dos listas. */
+.home-setup-go { appearance: none; background: none; border: 0; font: inherit; font-size: 14px; color: var(--accent); cursor: pointer; padding: 6px 10px; border-radius: 8px; }
+.home-setup-go:hover { background: var(--accent-dim); }
+.home-desktop-inline { display: none; }
+.dm-desktop .home-desktop-inline { display: inline; }
+
+.home-setup, .home-modes { position: relative; max-width: 1000px; margin: 0 auto; padding: 72px 24px 16px; box-sizing: border-box; }
+.home-modes { max-width: 1160px; padding-top: 64px; }
+.home-sec-head { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; margin-bottom: 30px; }
+.home-kicker { font-size: 12px; font-weight: 650; letter-spacing: .08em; color: var(--accent); }
+.home-h2 { margin: 0; font-size: clamp(22px, 3vw, 31px); font-weight: 680; letter-spacing: -.02em; }
+.home-sub { margin: 0; max-width: 620px; font-size: 14.5px; color: var(--text-muted); line-height: 1.6; }
+.home-note { margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.55; }
+.home-note a, .home-step-how a { color: var(--accent); }
+
+.home-path-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.home-path-tab { display: flex; flex-direction: column; gap: 5px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); cursor: pointer; transition: border-color .15s, background .15s; }
+.home-path-tab:hover { border-color: var(--border-strong); }
+.home-path-name { font-size: 15.5px; font-weight: 650; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.home-path-desc { font-size: 13.5px; color: var(--text-muted); line-height: 1.5; }
+.home-badge { font-size: 11px; font-weight: 650; color: var(--accent); background: var(--accent-dim); padding: 2px 8px; border-radius: 99px; }
+#home-path-app:checked ~ .home-path-tabs label[for="home-path-app"],
+#home-path-web:checked ~ .home-path-tabs label[for="home-path-web"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-dim); background: var(--surface2); }
+
+.home-steps { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); overflow: hidden; }
+.home-steps-web { display: none; }
+#home-path-web:checked ~ .home-steps-web { display: block; }
+#home-path-web:checked ~ .home-steps-app { display: none; }
+.home-step { display: grid; grid-template-columns: 40px 200px 1fr; gap: 16px; align-items: start; padding: 18px 20px; }
+.home-step + .home-step { border-top: 1px solid var(--border); }
+.home-step-n { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--accent); background: var(--accent-dim); }
+.home-step-what { font-size: 15px; font-weight: 650; padding-top: 4px; }
+.home-opt { display: inline-block; margin-left: 4px; font-size: 11px; font-weight: 600; color: var(--text-muted); border: 1px solid var(--border); padding: 1px 7px; border-radius: 99px; vertical-align: 1px; }
+.home-step-how { display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; line-height: 1.6; color: var(--text); padding-top: 4px; }
+.home-step-how p { margin: 0; }
+.home-step-how code, .home-note code { font: 12.5px var(--font-mono, ui-monospace, monospace); background: var(--surface2); border: 1px solid var(--border); padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+.home-os-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.home-os-btn { font-size: 14px; padding: 9px 18px; }
+
+.home-modes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+.home-mode-icon { width: 38px; height: 38px; border-radius: 9px; background: var(--accent-dim); display: flex; align-items: center; justify-content: center; }
+.home-mode-name { font-size: 15.5px; font-weight: 650; }
+.home-mode-role { font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); margin-top: -6px; }
+.home-mode-desc { font-size: 13.5px; color: var(--text-muted); line-height: 1.55; }
+.home-modes-foot { text-align: center; margin-top: 18px; }
+
+@media (max-width: 720px) {
+  .home-path-tabs { grid-template-columns: 1fr; }
+  .home-step { grid-template-columns: 32px 1fr; gap: 6px 12px; padding: 16px; }
+  .home-step-how { grid-column: 2; }
+}
 
 /* ===== RESPONSIVE ===== */
 @media (max-width: 1300px) {

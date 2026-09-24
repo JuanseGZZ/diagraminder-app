@@ -339,6 +339,18 @@ const DOCS = [
   <tr><td><b>diagram_schema</b></td><td>The real schema of that diagram type.</td></tr>
   <tr><td><b>write_diagram</b></td><td>Replaces it. You see it on screen instantly, without reloading.</td></tr>
 </table>
+<h2>As a memory: node by node</h2>
+<p>Organigrams and canvases are also the agent's <b>memory</b>. Reading a whole diagram costs more than the knowledge in it (coordinates, colors, HTML), so for these two modes it can also walk them a node at a time — and write the same way, without touching the JSON:</p>
+<table>
+  <tr><th>Tool</th><th>What it does</th></tr>
+  <tr><td><b>memory_overview</b></td><td>The map: every node as <code>[id] title</code>. An outline for an organigram; the most connected nodes first for a canvas.</td></tr>
+  <tr><td><b>memory_search</b></td><td>Finds the nodes that mention some words, with a snippet.</td></tr>
+  <tr><td><b>memory_read</b></td><td>A few nodes as plain text, with their neighbours (parent and children; arrows in and out).</td></tr>
+  <tr><td><b>memory_add</b></td><td>A new node next to another: child, sibling or parent. On a canvas it lands in a free spot, inside the right group.</td></tr>
+  <tr><td><b>memory_update</b></td><td>Edits a node, or appends to it — the way to keep it up to date.</td></tr>
+  <tr><td><b>memory_link</b> / <b>memory_unlink</b></td><td>Canvas: draws or removes an arrow, with its label.</td></tr>
+  <tr><td><b>memory_delete</b></td><td>Deletes a node (a branch, in an organigram, only if asked).</td></tr>
+</table>
 <h2>Why it cannot break your work</h2>
 <ul>
   <li>If you edited the same diagram a moment ago, the write is <b>refused</b> and the agent is told to re-read and reapply — it never silently overwrites you.</li>
@@ -350,7 +362,7 @@ const DOCS = [
 <p>It is a switch with three levels, in <b>Settings → This program → What the MCP can do</b> (or the <b>MCP</b> section of the backend's own panel). It starts <b>on</b> and at the lowest one.</p>
 <table>
   <tr><th>Level</th><th>What the agent gets</th></tr>
-  <tr><td><b>Diagrams only</b> (default)</td><td>The four tools above. Nothing else.</td></tr>
+  <tr><td><b>Diagrams only</b> (default)</td><td>The diagram and memory tools above. Nothing else.</td></tr>
   <tr><td><b>Diagrams + files</b></td><td>Also read, write, edit, search, version and git — <b>only inside a folder you pick</b>.</td></tr>
   <tr><td><b>Diagrams + files + commands</b></td><td>Also run commands.</td></tr>
 </table>
@@ -373,6 +385,18 @@ const DOCS = [
   <tr><td><b>diagram_schema</b></td><td>El esquema real de ese tipo de diagrama.</td></tr>
   <tr><td><b>write_diagram</b></td><td>Lo reemplaza. Lo ves en la pantalla al instante, sin recargar.</td></tr>
 </table>
+<h2>Como memoria: de a un nodo</h2>
+<p>Los organigramas y los canvas también son la <b>memoria</b> del agente. Leer un diagrama entero cuesta más que el conocimiento que tiene adentro (coordenadas, colores, HTML), así que en esos dos modos también puede recorrerlos de a un nodo — y escribir igual, sin tocar el JSON:</p>
+<table>
+  <tr><th>Herramienta</th><th>Qué hace</th></tr>
+  <tr><td><b>memory_overview</b></td><td>El mapa: cada nodo como <code>[id] título</code>. Un índice en el organigrama; en el canvas, primero los más conectados.</td></tr>
+  <tr><td><b>memory_search</b></td><td>Encuentra los nodos que mencionan unas palabras, con un fragmento.</td></tr>
+  <tr><td><b>memory_read</b></td><td>Unos pocos nodos en texto plano, con sus vecinos (padre e hijos; flechas que entran y salen).</td></tr>
+  <tr><td><b>memory_add</b></td><td>Un nodo nuevo al lado de otro: hijo, hermano o padre. En el canvas cae en un lugar libre, dentro del sector que corresponde.</td></tr>
+  <tr><td><b>memory_update</b></td><td>Edita un nodo, o le agrega texto al final — la forma de mantenerlo al día.</td></tr>
+  <tr><td><b>memory_link</b> / <b>memory_unlink</b></td><td>Canvas: dibuja o saca una flecha, con su etiqueta.</td></tr>
+  <tr><td><b>memory_delete</b></td><td>Borra un nodo (una rama del organigrama, solo si se lo pide).</td></tr>
+</table>
 <h2>Por qué no te puede romper el trabajo</h2>
 <ul>
   <li>Si vos editaste ese mismo diagrama hace un momento, la escritura se <b>rechaza</b> y al agente se le dice que vuelva a leer y reaplique — nunca te pisa en silencio.</li>
@@ -384,7 +408,7 @@ const DOCS = [
 <p>Es un interruptor con tres niveles, en <b>Ajustes → Este programa → Qué puede hacer el MCP</b> (o en la sección <b>MCP</b> del panel del backend). Arranca <b>prendido</b> y en el más bajo.</p>
 <table>
   <tr><th>Nivel</th><th>Qué recibe el agente</th></tr>
-  <tr><td><b>Solo diagramas</b> (default)</td><td>Las cuatro herramientas de arriba. Nada más.</td></tr>
+  <tr><td><b>Solo diagramas</b> (default)</td><td>Las herramientas de diagramas y de memoria de arriba. Nada más.</td></tr>
   <tr><td><b>Diagramas + archivos</b></td><td>Además leer, escribir, editar, buscar, versionar y git — <b>solo adentro de una carpeta que elegís</b>.</td></tr>
   <tr><td><b>Diagramas + archivos + comandos</b></td><td>Además ejecutar comandos.</td></tr>
 </table>
@@ -415,7 +439,6 @@ const DOCS = [
 <h2>Commands</h2>
 <p>The <b>/</b> button in the composer (or typing <code>/</code>) opens the commands. They do not send by themselves: they drop a long prompt into the box so you can read it and adjust it before sending.</p>
 <ul>
-  <li><code>/startproyect</code> — sets up a whole project around the orchestrator: it asks what the project is about, whether it already exists (so it reads the code first) and which diagrams to create.</li>
   <li><code>/help</code> — explains the app and answers what you ask.</li>
 </ul>`,
     es: `<p class="lead">El chat trabaja sobre el proyecto que elijas y lo edita con herramientas. Necesita una IA detrás — eso es lo primero que hay que configurar.</p>
@@ -434,7 +457,6 @@ const DOCS = [
 <h2>Comandos</h2>
 <p>El botón <b>/</b> del composer (o tipear <code>/</code>) abre los comandos. No se mandan solos: dejan un prompt largo en el cuadro para que lo leas y lo ajustes antes de enviar.</p>
 <ul>
-  <li><code>/startproyect</code> — arma un proyecto entero alrededor del orquestador: pregunta de qué se trata, si ya existe (entonces lee el código primero) y qué diagramas crear.</li>
   <li><code>/help</code> — explica la app y responde lo que le preguntes.</li>
 </ul>`,
   },

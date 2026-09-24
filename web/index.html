@@ -21,7 +21,7 @@
   <!-- ?v= rompe el cache del borde cuando cambia el CSS. El nginx de infra/web ya
        manda no-cache, pero una copia vieja YA cacheada sobrevive hasta su TTL: subir
        este número la invalida al instante (index.html se sirve siempre fresco). -->
-  <link rel="stylesheet" href="app/bolzaDeEstilos/styles.css?v=56">
+  <link rel="stylesheet" href="app/bolzaDeEstilos/styles.css?v=60">
 </head>
 
 <body>
@@ -601,6 +601,7 @@
     <div id="free-toolbar-controls" class="hidden free-toolbar-controls">
       <button id="freeAddNodeBtn" class="toolbar-btn toolbar-btn--menu"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add node</button>
       <button id="shapesBtn" class="toolbar-btn"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.3 10a.7.7 0 0 1-.6-1l4.7-8a.7.7 0 0 1 1.2 0l4.7 8a.7.7 0 0 1-.6 1z"/><rect x="3" y="14" width="7" height="7" rx="1"/><circle cx="17.5" cy="17.5" r="3.5"/></svg>Shapes</button>
+      <button id="free-arrange-btn" class="toolbar-btn" title="Arrange the nodes automatically, with as few crossing arrows as possible. Only the selected ones if you selected two or more. Ctrl+Z undoes it."><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="4" width="6" height="5" rx="1"/><rect x="15" y="15" width="6" height="5" rx="1"/><path d="M9 6.5h6M18 9v6"/></svg>Arrange</button>
 
       <div class="toolbar-sep"></div>
 
@@ -1101,129 +1102,214 @@
           <button id="home-open" class="dm-btn-secondary">Open…</button>
         </div>
       </div>
-      <p style="margin:0;font-size:13px;color:var(--text-muted)">Nothing to sign up for. This page already works.</p>
+      <button id="home-setup-go" class="home-setup-go" type="button"><span class="dm-web-only">Connect it to Claude in five steps</span><span class="home-desktop-inline">Connect Claude — three steps left</span> ↓</button>
     </div>
   </section>
 
-  <!-- ===== EL CASO DE USO. Uno solo, hasta el final. =====
-       El home viejo listaba ocho modos y no mostraba ninguno usándose: como ninguno
-       podía ser EL caso sin opacar a los otros, no se mostraba nada y nadie entendía
-       para qué servía esto (doc 37 §1). Ahora hay un caso y se cuenta entero. -->
-  <section style="position:relative;padding:76px 24px 20px;max-width:1160px;margin:0 auto">
-    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-bottom:38px">
-      <span style="font-size:12px;font-weight:650;letter-spacing:.08em;color:var(--accent)">MINUTE 1 OF A REAL PROJECT</span>
-      <h2 style="margin:0;font-size:clamp(22px,3vw,31px);font-weight:680;letter-spacing:-.02em">Your documentation stops rotting</h2>
-      <p style="margin:0;max-width:600px;font-size:14.5px;color:var(--text-muted);line-height:1.6">
-        Because the one who keeps it up to date is the one writing the code.
-      </p>
+  <!-- ===== EL ONBOARDING: de cero a Claude escribiendo en tu diagrama. =====
+       El home anterior contaba el producto pero no te llevaba a usarlo: los dos caminos
+       eran dos botones sin instrucciones. Ahora cada camino es una tabla de pasos que
+       termina con la app andando y Claude conectado. Las pestañas son radios + CSS (sin
+       JS). En desktop la app ya está abierta: se muestran solo los pasos que faltan. -->
+  <section id="home-setup" class="home-setup">
+    <div class="home-sec-head">
+      <span class="home-kicker">GET IT RUNNING</span>
+      <h2 class="home-h2">From zero to Claude writing on your canvas</h2>
+      <p class="home-sub dm-web-only">This page already works in your browser. For Claude to read and write your diagrams, something has to run on your machine. Pick one:</p>
+      <p class="home-sub dm-desktop-only">You are already in the app. What is left is telling Claude where to find it.</p>
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
-      <div class="dm-card">
-        <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.06em">01</div>
-        <div style="font-size:15.5px;font-weight:650">Map what exists</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Drop the modules, the decisions, the why. The org chart opens collapsed, so you read the shape at a glance and open what you need.</div>
+    <div class="home-paths dm-web-only">
+      <input type="radio" name="home-path" id="home-path-app" checked hidden>
+      <input type="radio" name="home-path" id="home-path-web" hidden>
+
+      <div class="home-path-tabs">
+        <label for="home-path-app" class="home-path-tab">
+          <span class="home-path-name">Desktop app <span class="home-badge">Recommended</span></span>
+          <span class="home-path-desc">One file: the app and its backend together. Works offline.</span>
+        </label>
+        <label for="home-path-web" class="home-path-tab">
+          <span class="home-path-name">This website + backend</span>
+          <span class="home-path-desc">Keep using this page, with the backend running next to it.</span>
+        </label>
       </div>
-      <div class="dm-card">
-        <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.06em">02</div>
-        <div style="font-size:15.5px;font-weight:650">Connect your agent</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">One command prints the MCP config. Paste it and Claude Code can read every diagram — before it touches a single file.</div>
-      </div>
-      <div class="dm-card">
-        <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.06em">03</div>
-        <div style="font-size:15.5px;font-weight:650">It writes back</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">It finishes a change and leaves it written down: what it did, what is left. You see the canvas move while it works — no reload.</div>
-      </div>
-      <div class="dm-card dm-card-flagship">
-        <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.06em">04</div>
-        <div style="font-size:15.5px;font-weight:650">Put it to work</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">When one agent is not enough, wire a team on the canvas: who delegates to whom, which folder each one may touch, what it may run.</div>
-      </div>
+
+      <!-- Camino A: la app de escritorio -->
+      <ol class="home-steps home-steps-app">
+        <li class="home-step">
+          <span class="home-step-n">1</span>
+          <span class="home-step-what">Download it</span>
+          <div class="home-step-how">
+            <div class="home-os-btns">
+              <a class="dm-btn-secondary home-os-btn" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-win.exe" rel="noopener">Windows</a>
+              <a class="dm-btn-secondary home-os-btn" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-mac.zip" rel="noopener">macOS</a>
+              <a class="dm-btn-secondary home-os-btn" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-linux" rel="noopener">Linux</a>
+            </div>
+            <p class="home-note">Rather run it from source with Python? <a href="https://github.com/JuanseGZZ/diagraminder-app" target="_blank" rel="noopener">The repo</a> explains how.</p>
+          </div>
+        </li>
+        <li class="home-step">
+          <span class="home-step-n">2</span>
+          <span class="home-step-what">Open it</span>
+          <div class="home-step-how">
+            <p><b>Windows:</b> double-click it.</p>
+            <p><b>macOS:</b> unzip it and move the app to Applications. It is not signed yet, so the first time macOS warns you: right-click it → Open, or System Settings → Privacy &amp; Security → Open Anyway.</p>
+            <p><b>Linux:</b> <code>chmod +x DiagraMinder-linux &amp;&amp; ./DiagraMinder-linux</code></p>
+            <p class="home-note">It opens in its own window and tells you when there is a new version. Your projects live outside the program, so updating never touches them.</p>
+          </div>
+        </li>
+        <li class="home-step">
+          <span class="home-step-n">3</span>
+          <span class="home-step-what">Connect Claude Code</span>
+          <div class="home-step-how">
+            <p>In the app: <b>Settings → This program</b>. Copy the <code>.mcp.json</code> it shows — address and password already filled in — and paste it at the root of your project.</p>
+            <p>In Claude Code, run <code>/mcp</code>: it should show <code>diagraminder</code> connected. Ask it to read your diagrams before it touches the code.</p>
+          </div>
+        </li>
+        <li class="home-step">
+          <span class="home-step-n">4</span>
+          <span class="home-step-what">Decide what it may do</span>
+          <div class="home-step-how">
+            <p>Same screen, <b>What the MCP can do</b>: diagrams only (the default), diagrams + files inside one folder you pick, or also commands. The program enforces it, not the window.</p>
+          </div>
+        </li>
+        <li class="home-step">
+          <span class="home-step-n">5</span>
+          <span class="home-step-what">Claude web, too <span class="home-opt">optional</span></span>
+          <div class="home-step-how">
+            <p><b>Reach it from Claude web</b> opens a Cloudflare tunnel (it needs <code>cloudflared</code>; the app tells you how to install it). Add the address it gives you as a custom connector in Claude web: it asks for the password once. The tunnel dies when you turn it off or close the app.</p>
+          </div>
+        </li>
+      </ol>
+
+      <!-- Camino B: esta web + el backend -->
+      <ol class="home-steps home-steps-web">
+        <li class="home-step">
+          <span class="home-step-n">1</span>
+          <span class="home-step-what">Run the backend</span>
+          <div class="home-step-how">
+            <div class="home-os-btns">
+              <a class="dm-btn-secondary home-os-btn" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/DiagraMinder-Backend-win.exe" rel="noopener">Windows</a>
+              <a class="dm-btn-secondary home-os-btn" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/DiagraMinder-Backend-mac" rel="noopener">macOS</a>
+              <a class="dm-btn-secondary home-os-btn" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/DiagraMinder-Backend-linux" rel="noopener">Linux</a>
+            </div>
+            <p class="home-note">Or from source, no dependencies: clone <a href="https://github.com/JuanseGZZ/diagraminder-backend" target="_blank" rel="noopener">the repo</a> and run <code>python3 backend/server.py</code>. The code is open: read it before you run it.</p>
+          </div>
+        </li>
+        <li class="home-step">
+          <span class="home-step-n">2</span>
+          <span class="home-step-what">Connect this page</span>
+          <div class="home-step-how">
+            <p>Here: <b>Settings → Connect backend</b>. The first time it asks for a password: the backend prints it when it starts, and keeps it in <code>token.txt</code> inside its data folder.</p>
+          </div>
+        </li>
+        <li class="home-step">
+          <span class="home-step-n">3</span>
+          <span class="home-step-what">Use the chat</span>
+          <div class="home-step-how">
+            <p>Open the chat and pick <b>Local · Claude Code</b> — or any agent CLI you already have installed. It runs on your own subscription, and it can read and edit the project you choose.</p>
+          </div>
+        </li>
+        <li class="home-step">
+          <span class="home-step-n">4</span>
+          <span class="home-step-what">Connect Claude Code</span>
+          <div class="home-step-how">
+            <p>The backend's panel (<code>http://127.0.0.1:8765/panel</code>) shows the <code>.mcp.json</code> under <b>MCP</b>. Paste it at the root of your project and run <code>/mcp</code> in Claude Code. The same panel sets what the MCP may do.</p>
+          </div>
+        </li>
+        <li class="home-step">
+          <span class="home-step-n">5</span>
+          <span class="home-step-what">Claude web, too <span class="home-opt">optional</span></span>
+          <div class="home-step-how">
+            <p>From the same panel, the Cloudflare tunnel gives you an address to add as a custom connector in Claude web. It needs <code>cloudflared</code> and asks for the password once.</p>
+          </div>
+        </li>
+      </ol>
     </div>
 
-    <div style="margin-top:20px;padding:18px 20px;background:var(--surface2);border:1px solid var(--border);border-radius:14px;display:flex;flex-wrap:wrap;align-items:center;gap:14px;justify-content:center">
-      <code style="font:13px var(--font-mono,ui-monospace,monospace);color:var(--text)">DiagraMinder --mcp-config</code>
-      <span style="font-size:13px;color:var(--text-muted)">→ paste it into your <code style="font-size:12.5px">.mcp.json</code> and you are done</span>
-    </div>
+    <!-- En desktop: los pasos que faltan (3–5 del camino A) -->
+    <ol class="home-steps home-steps-desktop dm-desktop-only">
+      <li class="home-step">
+        <span class="home-step-n">1</span>
+        <span class="home-step-what">Connect Claude Code</span>
+        <div class="home-step-how">
+          <p><b>Settings → This program</b>. Copy the <code>.mcp.json</code> it shows — address and password already filled in — and paste it at the root of your project.</p>
+          <p>In Claude Code, run <code>/mcp</code>: it should show <code>diagraminder</code> connected. Ask it to read your diagrams before it touches the code.</p>
+        </div>
+      </li>
+      <li class="home-step">
+        <span class="home-step-n">2</span>
+        <span class="home-step-what">Decide what it may do</span>
+        <div class="home-step-how">
+          <p>Same screen, <b>What the MCP can do</b>: diagrams only (the default), diagrams + files inside one folder you pick, or also commands. The program enforces it, not the window.</p>
+        </div>
+      </li>
+      <li class="home-step">
+        <span class="home-step-n">3</span>
+        <span class="home-step-what">Claude web, too <span class="home-opt">optional</span></span>
+        <div class="home-step-how">
+          <p><b>Reach it from Claude web</b> opens a Cloudflare tunnel (it needs <code>cloudflared</code>; the app tells you how to install it). Add the address it gives you as a custom connector in Claude web: it asks for the password once. The tunnel dies when you turn it off or close the app.</p>
+        </div>
+      </li>
+    </ol>
   </section>
 
-  <!-- ===== LOS MODOS, pero como formas del CONTEXTO, no como lista de features ===== -->
-  <section style="position:relative;padding:56px 24px 8px;max-width:1160px;margin:0 auto">
-    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:24px;gap:16px;flex-wrap:wrap">
-      <h2 style="margin:0;font-size:13px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)">Five views of the same context</h2>
-      <span style="font-size:13px;color:var(--text-muted)">Your agent reads and writes all of them</span>
+  <!-- ===== LOS MODOS: cinco formas del contexto de un proyecto (doc 37 §1) ===== -->
+  <section class="home-modes">
+    <div class="home-sec-head">
+      <span class="home-kicker">WHAT YOU GET</span>
+      <h2 class="home-h2">Five shapes of your project's context</h2>
+      <p class="home-sub">Not five diagram types: five ways a project remembers. You and Claude read and write all of them.</p>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px">
+    <div class="home-modes-grid">
 
       <div class="dm-card">
-        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+        <div class="home-mode-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"></circle><circle cx="18" cy="6" r="2.5"></circle><circle cx="12" cy="18" r="2.5"></circle><path d="M12 15.5V12H6V8.5M12 12h6V8.5"></path></svg>
         </div>
-        <div style="font-size:15.5px;font-weight:650">Organigram</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">The documentation: the map of what exists and why it was decided that way.</div>
+        <div class="home-mode-name">Organigram</div>
+        <div class="home-mode-role">Documentation</div>
+        <div class="home-mode-desc">The map of what exists and why it was decided that way. Claude reads it before it touches the repo.</div>
       </div>
 
       <div class="dm-card">
-        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+        <div class="home-mode-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="5" height="5" rx="1"></rect><circle cx="18" cy="7" r="2.5"></circle><path d="M9 16l4-3 6 2"></path><path d="M4 19h4"></path></svg>
         </div>
-        <div style="font-size:15.5px;font-weight:650">Canvas</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Associative memory: everything you learned and would otherwise forget.</div>
+        <div class="home-mode-name">Canvas</div>
+        <div class="home-mode-role">Global associative memory</div>
+        <div class="home-mode-desc">Everything learned along the way, linked to what it relates to. Neither of you has to remember it.</div>
       </div>
 
       <div class="dm-card">
-        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+        <div class="home-mode-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="9" height="3" rx="1"></rect><rect x="3" y="11" width="14" height="3" rx="1"></rect><rect x="3" y="17" width="6" height="3" rx="1"></rect></svg>
         </div>
-        <div style="font-size:15.5px;font-weight:650">Activities</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">What is left, in order, with what depends on what.</div>
+        <div class="home-mode-name">Activities</div>
+        <div class="home-mode-role">Everything sequential</div>
+        <div class="home-mode-desc">What is left, in order, with what depends on what. Claude writes down what it finished and what comes next.</div>
       </div>
 
       <div class="dm-card">
-        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+        <div class="home-mode-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"></path><path d="M12 3v9M12 12l8-4.5M12 12l-8-4.5"></path></svg>
         </div>
-        <div style="font-size:15.5px;font-weight:650">Object</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">The data model — and the same graph fires the requests that test it.</div>
+        <div class="home-mode-name">Object</div>
+        <div class="home-mode-role">UML and testing</div>
+        <div class="home-mode-desc">The data model as classes and objects — and the same graph fires the requests that test it.</div>
       </div>
 
       <div class="dm-card dm-card-flagship">
-        <div style="width:38px;height:38px;border-radius:9px;background:var(--accent-dim);display:flex;align-items:center;justify-content:center">
+        <div class="home-mode-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="6" r="2.5"></circle><circle cx="19" cy="6" r="2.5"></circle><circle cx="12" cy="18" r="2.5"></circle><path d="M7 7l10 -1M7 8l4.5 8.5M17 8l-4.5 8.5"></path></svg>
         </div>
-        <div style="font-size:15.5px;font-weight:650">IA Orchestrator</div>
-        <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">The harness: agents, the folders they may touch, and what each one is allowed to run.</div>
+        <div class="home-mode-name">IA Orchestrator</div>
+        <div class="home-mode-role">The harness</div>
+        <div class="home-mode-desc">Agents, the folders each one may touch, and what each one is allowed to run.</div>
       </div>
 
     </div>
-    <p style="margin:18px 0 0;font-size:13px;color:var(--text-muted);text-align:center">
-      There are two more — a study questionnaire and a document library. They are in there; they are just not the point.
-    </p>
-  </section>
-
-  <!-- ===== LA DESCARGA. Los dos caminos, y cuál querés. ===== -->
-  <section style="position:relative;margin:56px auto 36px;max-width:1160px;padding:0 24px">
-    <div style="position:relative;background:var(--surface2);border:1px solid var(--border);border-radius:18px;padding:40px 36px;overflow:hidden">
-      <div style="position:absolute;top:-40%;right:-10%;width:420px;height:420px;background:radial-gradient(circle, var(--accent-dim), transparent 70%);pointer-events:none"></div>
-      <div style="position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;margin-bottom:26px">
-        <h2 style="margin:0;font-size:clamp(21px,2.8vw,28px);font-weight:680;letter-spacing:-.02em">Two ways in</h2>
-        <p style="margin:0;max-width:540px;font-size:14px;color:var(--text-muted);line-height:1.6">
-          This page already works on its own — everything stays in your browser. The agents and the MCP need something running on your machine.
-        </p>
-      </div>
-      <div style="position:relative;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;max-width:760px;margin:0 auto">
-        <div class="dm-card dm-card-flagship">
-          <div style="font-size:15.5px;font-weight:650">The whole app</div>
-          <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">One file. Open it and it works, fully offline — the app and its backend together. This is the one you want.</div>
-          <a class="dm-btn-primary" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest" target="_blank" rel="noopener" style="text-decoration:none;text-align:center">Download</a>
-        </div>
-        <div class="dm-card">
-          <div style="font-size:15.5px;font-weight:650">Just the backend</div>
-          <div style="font-size:13.5px;color:var(--text-muted);line-height:1.55">Run it next to this website instead. Same agents, same MCP — the code is open, read it before you run it.</div>
-          <a class="dm-btn-secondary" href="https://github.com/JuanseGZZ/diagraminder-backend" target="_blank" rel="noopener" style="text-decoration:none;text-align:center">See the code</a>
-        </div>
-      </div>
-    </div>
+    <p class="home-note home-modes-foot">There are two more — a study questionnaire and a document library. They are in there; they are just not the point.</p>
   </section>
 
   <section style="position:relative;padding:8px 24px 44px;max-width:1160px;margin:0 auto">
@@ -1281,6 +1367,6 @@
   <!-- ?v= igual que en el CSS: mientras el zone setting "Browser Cache TTL" de
        Cloudflare pise el no-cache del origen, subir este número es lo único que
        invalida el bundle YA cacheado en los navegadores. -->
-  <script type="module" src="./dist/bundle.js?v=56"></script>
+  <script type="module" src="./dist/bundle.js?v=60"></script>
 </body>
 </html>
