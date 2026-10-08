@@ -85,8 +85,9 @@ the token is this program's password:
 }
 ```
 
-Four tools to work with a diagram as JSON: `list_diagrams`, `read_diagram`,
-`diagram_schema`, `write_diagram`.
+Five tools to work with a diagram as JSON: `list_diagrams`, `read_diagram`,
+`diagram_schema`, `write_diagram` and `create_diagram` (a new one, in one of your
+folders — it shows up in the app without reloading).
 
 And eight to use organigrams and canvases as a **memory**, a node at a time, without
 reading or rewriting the whole file: `memory_overview` (the map), `memory_search`,
