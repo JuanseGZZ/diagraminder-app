@@ -338,6 +338,7 @@ const DOCS = [
   <tr><td><b>read_diagram</b></td><td>Reads one whole.</td></tr>
   <tr><td><b>diagram_schema</b></td><td>The real schema of that diagram type.</td></tr>
   <tr><td><b>write_diagram</b></td><td>Replaces it. You see it on screen instantly, without reloading.</td></tr>
+  <tr><td><b>create_diagram</b></td><td>Creates a new one in one of your folders. It shows up in your list instantly.</td></tr>
 </table>
 <h2>As a memory: node by node</h2>
 <p>Organigrams and canvases are also the agent's <b>memory</b>. Reading a whole diagram costs more than the knowledge in it (coordinates, colors, HTML), so for these two modes it can also walk them a node at a time — and write the same way, without touching the JSON:</p>
@@ -384,6 +385,7 @@ const DOCS = [
   <tr><td><b>read_diagram</b></td><td>Lee uno entero.</td></tr>
   <tr><td><b>diagram_schema</b></td><td>El esquema real de ese tipo de diagrama.</td></tr>
   <tr><td><b>write_diagram</b></td><td>Lo reemplaza. Lo ves en la pantalla al instante, sin recargar.</td></tr>
+  <tr><td><b>create_diagram</b></td><td>Crea uno nuevo en una de tus carpetas. Aparece en tu lista al instante.</td></tr>
 </table>
 <h2>Como memoria: de a un nodo</h2>
 <p>Los organigramas y los canvas también son la <b>memoria</b> del agente. Leer un diagrama entero cuesta más que el conocimiento que tiene adentro (coordenadas, colores, HTML), así que en esos dos modos también puede recorrerlos de a un nodo — y escribir igual, sin tocar el JSON:</p>
