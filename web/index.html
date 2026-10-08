@@ -21,7 +21,7 @@
   <!-- ?v= rompe el cache del borde cuando cambia el CSS. El nginx de infra/web ya
        manda no-cache, pero una copia vieja YA cacheada sobrevive hasta su TTL: subir
        este número la invalida al instante (index.html se sirve siempre fresco). -->
-  <link rel="stylesheet" href="app/bolzaDeEstilos/styles.css?v=62">
+  <link rel="stylesheet" href="app/bolzaDeEstilos/styles.css?v=64">
 </head>
 
 <body>
@@ -1053,289 +1053,605 @@
     </div>
   </div>
 
-<div id="home-screen" style="position:fixed;inset:56px 0 0 0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;overflow-y:auto;overflow-x:hidden">
+<div id="home-screen" style="position:fixed;inset:56px 0 0 0;overflow-y:auto;overflow-x:hidden">
 
-  <div style="position:absolute;inset:0;background-image:radial-gradient(var(--border-strong) 1px, transparent 1px);background-size:22px 22px;pointer-events:none;opacity:.55"></div>
-  <div style="position:absolute;top:-10%;left:50%;transform:translateX(-50%);width:1100px;height:640px;background:radial-gradient(ellipse at center, var(--accent-dim), transparent 70%);pointer-events:none;filter:blur(2px)"></div>
+  <!-- ===== HERO: qué es, cómo se ve, y una acción. El demo ES el producto. ===== -->
+  <section class="home-hero">
+    <div class="home-hero-bg" aria-hidden="true"></div>
 
-  <section style="position:relative;min-height:calc(100vh - 56px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:30px;padding:32px 20px;box-sizing:border-box">
-
-    <svg class="dm-anim" width="100%" height="100%" viewBox="0 0 1200 640" preserveAspectRatio="xMidYMid slice" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:.65">
-      <line x1="150" y1="120" x2="410" y2="230" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="320" stroke-dashoffset="320" style="animation:dm-draw 1.6s ease-out .1s forwards"></line>
-      <line x1="410" y1="230" x2="740" y2="150" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="380" stroke-dashoffset="380" style="animation:dm-draw 1.6s ease-out .35s forwards"></line>
-      <line x1="740" y1="150" x2="1040" y2="270" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="340" stroke-dashoffset="340" style="animation:dm-draw 1.6s ease-out .6s forwards"></line>
-      <line x1="410" y1="230" x2="290" y2="470" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="280" stroke-dashoffset="280" style="animation:dm-draw 1.6s ease-out .45s forwards"></line>
-      <line x1="740" y1="150" x2="860" y2="470" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="340" stroke-dashoffset="340" style="animation:dm-draw 1.6s ease-out .8s forwards"></line>
-      <line x1="290" y1="470" x2="560" y2="540" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="300" stroke-dashoffset="300" style="animation:dm-draw 1.6s ease-out .95s forwards"></line>
-      <line x1="860" y1="470" x2="560" y2="540" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="300" stroke-dashoffset="300" style="animation:dm-draw 1.6s ease-out 1.1s forwards"></line>
-
-      <g style="animation:dm-float 8s ease-in-out infinite">
-        <circle cx="150" cy="120" r="6" fill="var(--accent)"></circle>
-        <circle cx="150" cy="120" r="12" fill="none" stroke="var(--accent-dim)" stroke-width="6"></circle>
-      </g>
-      <g style="animation:dm-float2 9s ease-in-out infinite .2s">
-        <circle cx="410" cy="230" r="9" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"></circle>
-      </g>
-      <g style="animation:dm-float3 10s ease-in-out infinite .4s">
-        <circle cx="740" cy="150" r="7" fill="var(--surface)" stroke="var(--border-strong)" stroke-width="2"></circle>
-      </g>
-      <g style="animation:dm-float 9.5s ease-in-out infinite .3s">
-        <circle cx="1040" cy="270" r="6" fill="var(--surface)" stroke="var(--border-strong)" stroke-width="2"></circle>
-      </g>
-      <g style="animation:dm-float2 8.5s ease-in-out infinite .5s">
-        <circle cx="290" cy="470" r="6" fill="var(--surface)" stroke="var(--border-strong)" stroke-width="2"></circle>
-      </g>
-      <g style="animation:dm-float3 7.5s ease-in-out infinite .1s">
-        <circle cx="860" cy="470" r="6" fill="var(--surface)" stroke="var(--border-strong)" stroke-width="2"></circle>
-      </g>
-      <g style="animation:dm-float 9s ease-in-out infinite .6s">
-        <rect x="548" y="528" width="24" height="24" rx="5" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"></rect>
-      </g>
-
-      <circle r="3.5" fill="var(--accent)" style="offset-path:path('M150,120 L410,230 L740,150 L1040,270');animation:dm-token 7s linear infinite 1.2s"></circle>
-      <circle r="3.5" fill="var(--accent)" style="offset-path:path('M290,470 L560,540 L860,470');animation:dm-token2 6s linear infinite 2.4s"></circle>
-    </svg>
-
-    <div class="dm-in" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:24px;max-width:780px;text-align:center;animation:dm-fadeup .7s ease-out both">
-      <h1 style="margin:0;font-size:clamp(34px,5.6vw,60px);font-weight:680;letter-spacing:-.035em;line-height:1.06">
-        The context of your project,<br><span style="color:var(--accent)">where your agent can reach it.</span>
-      </h1>
-      <p style="margin:0;font-size:clamp(15px,1.6vw,18.5px);color:var(--text-muted);max-width:560px;line-height:1.6">
-        A canvas you and Claude Code edit at the same time. You watch it change while it works.
-        Runs on your machine — your files, your keys, no account.
+    <div class="home-hero-copy">
+      <p class="home-eyebrow">
+        <span class="home-eyebrow-dot" aria-hidden="true"></span>
+        <span>Shared memory for you and your coding agent</span>
       </p>
+      <h1 class="home-h1">The context of your project, in a canvas you and your agent edit at the same time.</h1>
+      <p class="home-lede">Claude Code reads your diagrams before it touches the repo, and writes back what it learned and what is left. You watch the canvas change while it works.</p>
 
-      <div class="home-cta">
-        <div class="home-cta-row">
-          <button id="home-new" class="dm-btn-secondary">New diagram</button>
-          <button id="home-open" class="dm-btn-secondary">Open…</button>
+      <div class="home-actions">
+        <!-- Web: descargar es LA acción. Un solo bloque relleno, tres destinos. -->
+        <div class="home-dl dm-web-only" role="group" aria-label="Download the app">
+          <span class="home-dl-label">Download the app</span>
+          <a class="home-dl-os" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-win.exe" rel="noopener">Windows</a>
+          <a class="home-dl-os" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-mac.zip" rel="noopener">macOS</a>
+          <a class="home-dl-os" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-linux" rel="noopener">Linux</a>
+        </div>
+
+        <div class="home-actions-row">
+          <!-- Mismo botón en los dos lados: en web es secundario ("probalo acá"), en desktop es el primario. -->
+          <button id="home-new" class="home-btn home-btn-new" type="button"><span class="dm-web-only">Try it in the browser</span><span class="home-desk-inline">New diagram</span></button>
+          <button id="home-open" class="home-btn home-btn-ghost" type="button">Open…</button>
+          <button id="home-setup-go" class="home-jump" type="button"><span class="dm-web-only">Connect Claude in five steps</span><span class="home-desk-inline">Connect Claude — three steps left</span><span class="home-jump-arrow" aria-hidden="true">↓</span></button>
+        </div>
+
+        <p class="home-actions-meta dm-web-only">Windows, macOS and Linux. No account. Runs on your machine.</p>
+      </div>
+    </div>
+
+    <!-- El loop: una sesión del agente a la izquierda, el canvas a la derecha, en sincronía.
+         Todo el texto es estático (el traductor recorre los nodos); la animación es solo CSS. -->
+    <div class="home-demo" aria-label="Claude Code writing on a DiagraMinder canvas">
+      <div class="home-demo-bar">
+        <span class="home-demo-title">checkout-service</span>
+        <span class="home-demo-live"><span class="home-live-dot" aria-hidden="true"></span><span>Claude is editing</span></span>
+      </div>
+
+      <div class="home-demo-body">
+        <div class="home-term" aria-hidden="true">
+          <div class="home-term-head">claude</div>
+          <div class="home-tl home-tl-user">
+            <span class="home-tl-caret">&gt;</span>
+            <span>Add rate limiting to the upload endpoint. Read the diagrams first.</span>
+          </div>
+          <div class="home-tl home-a1">
+            <span class="home-tl-bullet"></span>
+            <span class="home-tl-call"><span class="home-tl-tool">read_diagram</span> <span class="home-tl-arg">Organigram</span></span>
+          </div>
+          <div class="home-tl home-tl-out home-a1">14 nodes · 3 decisions</div>
+          <div class="home-tl home-a1">
+            <span class="home-tl-bullet home-tl-bullet-dim"></span>
+            <span>Read <span class="home-tl-arg">src/api/upload.ts</span></span>
+          </div>
+          <div class="home-tl home-a2">
+            <span class="home-tl-bullet"></span>
+            <span class="home-tl-call"><span class="home-tl-tool">memory_add</span> <span class="home-tl-arg">Canvas</span></span>
+          </div>
+          <div class="home-tl home-tl-out home-a2">"Uploads go straight to S3 through presigned URLs."</div>
+          <div class="home-tl home-a3">
+            <span class="home-tl-bullet"></span>
+            <span class="home-tl-call"><span class="home-tl-tool">write_diagram</span> <span class="home-tl-arg">Activities</span></span>
+          </div>
+          <div class="home-tl home-tl-out home-a3">+2 tasks · 1 done</div>
+          <div class="home-tl home-tl-done home-a4">
+            <span class="home-tl-check">✓</span>
+            <span>Rate limit goes on issuing URLs, not on the upload.</span>
+          </div>
+          <div class="home-tl home-tl-cursor"><span class="home-cursor"></span></div>
+        </div>
+
+        <div class="home-cv" aria-hidden="true">
+          <div class="home-cv-head">
+            <span class="home-cv-mode">Canvas</span>
+            <span class="home-cv-path">memory</span>
+          </div>
+          <!-- Nodos y flechas en UN solo SVG con viewBox: las flechas caen siempre en el borde del nodo, a cualquier ancho. -->
+          <div class="home-cv-board">
+            <svg class="home-sv" viewBox="0 0 400 380" preserveAspectRatio="xMidYMid meet">
+              <defs>
+                <marker id="home-mk-d" class="home-mk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"></path></marker>
+                <marker id="home-mk-da" class="home-mk home-mk-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"></path></marker>
+              </defs>
+
+              <path class="home-sv-edge" d="M180 49 L218 49" marker-end="url(#home-mk-d)"></path>
+              <path class="home-sv-edge" d="M100 74 L100 126" marker-end="url(#home-mk-d)"></path>
+
+              <g class="home-sv-node">
+                <rect x="20" y="24" width="160" height="50" rx="9"></rect>
+                <text class="home-sv-t" x="34" y="45">Upload endpoint</text>
+                <text class="home-sv-s" x="34" y="62">src/api/upload.ts</text>
+              </g>
+              <g class="home-sv-node">
+                <rect x="220" y="24" width="160" height="50" rx="9"></rect>
+                <text class="home-sv-t" x="234" y="45">Rate limits</text>
+                <text class="home-sv-s" x="234" y="62">Per API key</text>
+              </g>
+              <g class="home-sv-node">
+                <rect x="20" y="128" width="160" height="50" rx="9"></rect>
+                <text class="home-sv-t" x="34" y="149">Auth middleware</text>
+                <text class="home-sv-s" x="34" y="166">Checks the key</text>
+              </g>
+
+              <g class="home-a2">
+                <path class="home-sv-edge home-sv-edge-new home-e2" d="M180 62 C 202 62, 198 147, 218 147" pathLength="1" marker-end="url(#home-mk-da)"></path>
+                <g class="home-sv-node home-sv-node-new">
+                  <rect x="220" y="112" width="160" height="70" rx="9"></rect>
+                  <text class="home-sv-tag" x="234" y="131">CLAUDE · JUST NOW</text>
+                  <text class="home-sv-t" x="234" y="151">Uploads skip the API</text>
+                  <text class="home-sv-s" x="234" y="169">S3 presigned URLs</text>
+                </g>
+              </g>
+
+              <g class="home-a3">
+                <path class="home-sv-edge home-sv-edge-new home-e3" d="M300 182 L300 230" pathLength="1" marker-end="url(#home-mk-da)"></path>
+                <g class="home-sv-node home-sv-node-new">
+                  <rect x="120" y="232" width="260" height="98" rx="9"></rect>
+                  <text class="home-sv-tag" x="134" y="252">WHAT IS LEFT</text>
+                  <rect class="home-sv-box home-sv-box-done" x="134" y="265" width="10" height="10" rx="3"></rect>
+                  <text class="home-sv-task home-sv-task-done" x="152" y="274">Read the upload flow</text>
+                  <rect class="home-sv-box home-sv-box-next" x="134" y="285" width="10" height="10" rx="3"></rect>
+                  <text class="home-sv-task home-sv-task-next" x="152" y="294">Rate-limit URL issuing</text>
+                  <rect class="home-sv-box" x="134" y="305" width="10" height="10" rx="3"></rect>
+                  <text class="home-sv-task" x="152" y="314">Test the 429 path</text>
+                </g>
+              </g>
+
+              <g class="home-a4 home-sv-foot">
+                <rect x="20" y="342" width="186" height="26" rx="7"></rect>
+                <text class="home-sv-foot-t" x="32" y="359">2 changes by Claude</text>
+                <rect class="home-sv-undo" x="152" y="347" width="46" height="16" rx="4"></rect>
+                <text class="home-sv-undo-t" x="175" y="359" text-anchor="middle">Undo</text>
+              </g>
+            </svg>
+          </div>
         </div>
       </div>
-      <button id="home-setup-go" class="home-setup-go" type="button"><span class="dm-web-only">Connect it to Claude in five steps</span><span class="home-desktop-inline">Connect Claude — three steps left</span> ↓</button>
     </div>
   </section>
 
-  <!-- ===== EL ONBOARDING: de cero a Claude escribiendo en tu diagrama. =====
-       El home anterior contaba el producto pero no te llevaba a usarlo: los dos caminos
-       eran dos botones sin instrucciones. Ahora cada camino es una tabla de pasos que
-       termina con la app andando y Claude conectado. Las pestañas son radios + CSS (sin
-       JS). En desktop la app ya está abierta: se muestran solo los pasos que faltan. -->
-  <section id="home-setup" class="home-setup">
-    <div class="home-sec-head">
-      <span class="home-kicker">GET IT RUNNING</span>
-      <h2 class="home-h2">From zero to Claude writing on your canvas</h2>
-      <p class="home-sub dm-web-only">This page already works in your browser. For Claude to read and write your diagrams, something has to run on your machine. Pick one:</p>
-      <p class="home-sub dm-desktop-only">You are already in the app. What is left is telling Claude where to find it.</p>
+  <!-- ===== POR QUÉ: lo que hoy duele, en tres líneas ===== -->
+  <section class="home-why">
+    <div class="home-why-item">
+      <span class="home-why-k">01</span>
+      <h3 class="home-why-t">It remembers between sessions</h3>
+      <p class="home-why-d">What the agent learned is written to a diagram, not lost in a scrollback. The next session starts by reading it.</p>
     </div>
+    <div class="home-why-item">
+      <span class="home-why-k">02</span>
+      <h3 class="home-why-t">You see what it is doing</h3>
+      <p class="home-why-d">Every note and task it writes lands on the canvas as it happens. A graph you read at a glance, not a log you parse.</p>
+    </div>
+    <div class="home-why-item">
+      <span class="home-why-k">03</span>
+      <h3 class="home-why-t">You decide what it may touch</h3>
+      <p class="home-why-d">Diagrams only, files inside one folder, or commands too. The program enforces it, not the window.</p>
+    </div>
+  </section>
 
-    <div class="home-paths dm-web-only">
-      <input type="radio" name="home-path" id="home-path-app" checked hidden>
-      <input type="radio" name="home-path" id="home-path-web" hidden>
+  <!-- ===== LOS MODOS: cinco formas del contexto, cada una con su render ===== -->
+  <section class="home-sec home-modes-sec">
+    <header class="home-sec-top">
+      <p class="home-eyebrow-plain">Five modes</p>
+      <h2 class="home-h2x">Five shapes of your project's context</h2>
+      <p class="home-intro">Not five diagram types: five ways a project remembers. You and Claude read and write all of them.</p>
+    </header>
 
-      <div class="home-path-tabs">
-        <label for="home-path-app" class="home-path-tab">
-          <span class="home-path-name">Desktop app <span class="home-badge">Recommended</span></span>
-          <span class="home-path-desc">One file: the app and its backend together. Works offline.</span>
+    <div class="home-bento">
+
+      <article class="home-mode home-mode-lg">
+        <div class="home-prev home-prev-canvas" aria-hidden="true">
+          <svg class="home-prev-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <path d="M22 30 L46 48 L74 26 M46 48 L36 76 M46 48 L72 72 M74 26 L72 72"></path>
+          </svg>
+          <span class="home-pn home-pc1">Retry policy</span>
+          <span class="home-pn home-pc2 home-pn-accent">Why we dropped Redis</span>
+          <span class="home-pn home-pc3">Webhook order</span>
+          <span class="home-pn home-pc4">Flaky test: auth</span>
+          <span class="home-pn home-pc5">Stripe idempotency</span>
+        </div>
+        <div class="home-mode-txt">
+          <div class="home-mode-head"><h3 class="home-mode-n">Canvas</h3><span class="home-mode-r">Associative memory</span></div>
+          <p class="home-mode-d">Everything learned along the way, linked to what it relates to. Neither of you has to remember it.</p>
+        </div>
+      </article>
+
+      <article class="home-mode home-mode-lg home-mode-flag">
+        <div class="home-prev" aria-hidden="true">
+          <svg class="home-sv" viewBox="0 0 560 250" preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <marker id="home-mk-o" class="home-mk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"></path></marker>
+              <marker id="home-mk-oa" class="home-mk home-mk-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"></path></marker>
+            </defs>
+
+            <rect class="home-o-dept" x="150" y="134" width="390" height="104" rx="12"></rect>
+            <text class="home-o-dept-t" x="166" y="154">Dept · Verification</text>
+
+            <path class="home-o-edge home-o-edge-on" d="M150 70 L213 70" marker-end="url(#home-mk-oa)"></path>
+            <path class="home-o-edge" d="M262 98 C 262 132, 245 136, 245 168" marker-end="url(#home-mk-o)"></path>
+            <path class="home-o-edge" d="M318 98 C 318 132, 445 136, 445 168" marker-end="url(#home-mk-o)"></path>
+            <path class="home-o-edge" d="M315 196 L373 196" marker-end="url(#home-mk-o)"></path>
+
+            <text class="home-o-lbl" x="181" y="62" text-anchor="middle">task</text>
+            <text class="home-o-lbl" x="232" y="128" text-anchor="end">delegates</text>
+            <text class="home-o-lbl" x="392" y="124" text-anchor="middle">context</text>
+            <text class="home-o-lbl" x="344" y="188" text-anchor="middle">context</text>
+
+            <g class="home-o-card">
+              <rect x="20" y="42" width="130" height="56" rx="10"></rect>
+              <circle class="home-o-dot home-o-dot-task" cx="35" cy="59" r="3"></circle>
+              <text class="home-o-kind" x="44" y="62">TASK</text>
+              <text class="home-o-name" x="32" y="83">Change request</text>
+            </g>
+            <g class="home-o-card home-o-card-on">
+              <rect x="215" y="42" width="150" height="56" rx="10"></rect>
+              <circle class="home-o-dot home-o-dot-agent" cx="230" cy="59" r="3"></circle>
+              <text class="home-o-kind" x="239" y="62">AGENT</text>
+              <text class="home-o-state" x="353" y="62" text-anchor="end">running</text>
+              <text class="home-o-name" x="227" y="83">Dev</text>
+            </g>
+            <g class="home-o-card">
+              <rect x="175" y="168" width="140" height="56" rx="10"></rect>
+              <circle class="home-o-dot home-o-dot-agent" cx="190" cy="185" r="3"></circle>
+              <text class="home-o-kind" x="199" y="188">AGENT</text>
+              <text class="home-o-name" x="187" y="209">Tester</text>
+            </g>
+            <g class="home-o-card">
+              <rect x="375" y="168" width="140" height="56" rx="10"></rect>
+              <circle class="home-o-dot home-o-dot-data" cx="390" cy="185" r="3"></circle>
+              <text class="home-o-kind" x="399" y="188">DATA</text>
+              <text class="home-o-name" x="387" y="209">Loop rules</text>
+            </g>
+          </svg>
+        </div>
+        <div class="home-mode-txt">
+          <div class="home-mode-head"><h3 class="home-mode-n">IA Orchestrator</h3><span class="home-mode-r">The harness</span></div>
+          <p class="home-mode-d">Agents, the folders each one may touch, and what each one is allowed to run. Drawn, so you can check it.</p>
+        </div>
+      </article>
+
+      <article class="home-mode">
+        <div class="home-prev" aria-hidden="true">
+          <svg class="home-sv" viewBox="0 0 360 160" preserveAspectRatio="xMidYMid meet">
+            <path class="home-sv-edge" d="M180 50 L180 75 M75 75 L285 75 M75 75 L75 100 M180 75 L180 100 M285 75 L285 100"></path>
+            <g class="home-sv-node home-sv-node-root">
+              <rect x="110" y="22" width="140" height="28" rx="7"></rect>
+              <text class="home-sv-mono" x="180" y="40" text-anchor="middle">checkout-service</text>
+            </g>
+            <g class="home-sv-node">
+              <rect x="40" y="100" width="70" height="28" rx="7"></rect>
+              <text class="home-sv-mono" x="75" y="118" text-anchor="middle">api</text>
+            </g>
+            <g class="home-sv-node">
+              <rect x="140" y="100" width="80" height="28" rx="7"></rect>
+              <text class="home-sv-mono" x="180" y="118" text-anchor="middle">workers</text>
+            </g>
+            <g class="home-sv-node">
+              <rect x="250" y="100" width="70" height="28" rx="7"></rect>
+              <text class="home-sv-mono" x="285" y="118" text-anchor="middle">billing</text>
+            </g>
+          </svg>
+        </div>
+        <div class="home-mode-txt">
+          <div class="home-mode-head"><h3 class="home-mode-n">Organigram</h3><span class="home-mode-r">Documentation</span></div>
+          <p class="home-mode-d">The map of what exists and why it was decided that way.</p>
+        </div>
+      </article>
+
+      <article class="home-mode">
+        <div class="home-prev" aria-hidden="true">
+          <svg class="home-sv" viewBox="0 0 400 160" preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <marker id="home-mk-act" class="home-mk home-mk-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"></path></marker>
+            </defs>
+            <path class="home-a-edge" d="M64 80 L90 80" marker-end="url(#home-mk-act)"></path>
+            <path class="home-a-edge" d="M170 80 C 186 80, 184 47, 198 47" marker-end="url(#home-mk-act)"></path>
+            <path class="home-a-edge" d="M170 80 C 186 80, 184 113, 198 113" marker-end="url(#home-mk-act)"></path>
+            <path class="home-a-edge" d="M278 47 C 294 47, 292 80, 306 80" marker-end="url(#home-mk-act)"></path>
+            <path class="home-a-edge" d="M278 113 C 294 113, 292 80, 306 80" marker-end="url(#home-mk-act)"></path>
+            <g class="home-a-start">
+              <rect x="12" y="66" width="52" height="28" rx="14"></rect>
+              <text x="38" y="84" text-anchor="middle">Start</text>
+            </g>
+            <g class="home-a-node home-a-done">
+              <rect x="92" y="62" width="78" height="36" rx="10"></rect>
+              <text x="131" y="84" text-anchor="middle">Schema</text>
+            </g>
+            <g class="home-a-node home-a-now">
+              <rect x="200" y="29" width="78" height="36" rx="10"></rect>
+              <text x="239" y="51" text-anchor="middle">API</text>
+            </g>
+            <g class="home-a-node">
+              <rect x="200" y="95" width="78" height="36" rx="10"></rect>
+              <text x="239" y="117" text-anchor="middle">UI</text>
+            </g>
+            <g class="home-a-node">
+              <rect x="308" y="62" width="80" height="36" rx="10"></rect>
+              <text x="348" y="84" text-anchor="middle">Release</text>
+            </g>
+          </svg>
+        </div>
+        <div class="home-mode-txt">
+          <div class="home-mode-head"><h3 class="home-mode-n">Activities</h3><span class="home-mode-r">What is left</span></div>
+          <p class="home-mode-d">What is left, in order, with what depends on what.</p>
+        </div>
+      </article>
+
+      <article class="home-mode">
+        <div class="home-prev home-prev-obj" aria-hidden="true">
+          <span class="home-obj">
+            <span class="home-obj-h">User</span>
+            <span class="home-obj-f">id: uuid</span>
+            <span class="home-obj-f">email: string</span>
+          </span>
+          <span class="home-obj">
+            <span class="home-obj-h">Order</span>
+            <span class="home-obj-f">userId: uuid</span>
+            <span class="home-obj-f">total: int</span>
+          </span>
+          <span class="home-obj-req"><span class="home-obj-verb">POST</span><span>/orders</span><span class="home-obj-code">201</span></span>
+        </div>
+        <div class="home-mode-txt">
+          <div class="home-mode-head"><h3 class="home-mode-n">Object</h3><span class="home-mode-r">Model and tests</span></div>
+          <p class="home-mode-d">The data model as classes and objects. The same graph fires the HTTP requests that test it.</p>
+        </div>
+      </article>
+
+    </div>
+    <p class="home-fine">There are two more — a study questionnaire and a document library. They are in there; they are just not the point.</p>
+  </section>
+
+  <!-- ===== ONBOARDING: pasos cortos, el detalle se pliega. Radios + CSS, sin JS. ===== -->
+  <section id="home-setup" class="home-sec home-setup-sec">
+    <header class="home-sec-top">
+      <p class="home-eyebrow-plain">Get it running</p>
+      <h2 class="home-h2x">From zero to Claude writing on your canvas</h2>
+      <p class="home-intro dm-web-only">This page already works in your browser. For Claude to read and write your diagrams, something has to run on your machine. Pick one.</p>
+      <p class="home-intro dm-desktop-only">You are already in the app. What is left is telling Claude where to find it.</p>
+    </header>
+
+    <div class="home-routes dm-web-only">
+      <input type="radio" name="home-path" id="home-path-app" class="home-route-radio" checked hidden>
+      <input type="radio" name="home-path" id="home-path-web" class="home-route-radio" hidden>
+
+      <div class="home-route-tabs">
+        <label for="home-path-app" class="home-route-tab">
+          <span class="home-route-name"><span>Desktop app</span><span class="home-tag home-tag-accent">Recommended</span></span>
+          <span class="home-route-desc">One file: the app and its backend together. Works offline.</span>
         </label>
-        <label for="home-path-web" class="home-path-tab">
-          <span class="home-path-name">This website + backend</span>
-          <span class="home-path-desc">Keep using this page, with the backend running next to it.</span>
+        <label for="home-path-web" class="home-route-tab">
+          <span class="home-route-name"><span>This website + backend</span></span>
+          <span class="home-route-desc">Keep using this page, with the backend running next to it.</span>
         </label>
       </div>
 
-      <!-- Camino A: la app de escritorio -->
-      <ol class="home-steps home-steps-app">
-        <li class="home-step">
-          <span class="home-step-n">1</span>
-          <span class="home-step-what">Download it</span>
-          <div class="home-step-how">
-            <div class="home-os-btns">
-              <a class="dm-btn-secondary home-os-btn" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-win.exe" rel="noopener">Windows</a>
-              <a class="dm-btn-secondary home-os-btn" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-mac.zip" rel="noopener">macOS</a>
-              <a class="dm-btn-secondary home-os-btn" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-linux" rel="noopener">Linux</a>
+      <!-- Camino A -->
+      <ol class="home-flow home-flow-app">
+        <li class="home-fs">
+          <span class="home-fs-n">1</span>
+          <div class="home-fs-main">
+            <h3 class="home-fs-t">Download it</h3>
+            <p class="home-fs-s">One file. The app and its backend, together.</p>
+            <details class="home-more">
+              <summary>Details</summary>
+              <p>Rather run it from source with Python? <a href="https://github.com/JuanseGZZ/diagraminder-app" target="_blank" rel="noopener">The repo</a> explains how.</p>
+            </details>
+          </div>
+          <div class="home-fs-act">
+            <div class="home-os">
+              <a class="home-os-a" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-win.exe" rel="noopener">Windows</a>
+              <a class="home-os-a" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-mac.zip" rel="noopener">macOS</a>
+              <a class="home-os-a" href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest/download/DiagraMinder-linux" rel="noopener">Linux</a>
             </div>
-            <p class="home-note">Rather run it from source with Python? <a href="https://github.com/JuanseGZZ/diagraminder-app" target="_blank" rel="noopener">The repo</a> explains how.</p>
           </div>
         </li>
-        <li class="home-step">
-          <span class="home-step-n">2</span>
-          <span class="home-step-what">Open it</span>
-          <div class="home-step-how">
-            <p><b>Windows:</b> double-click it.</p>
-            <p><b>macOS:</b> unzip it and move the app to Applications. It is not signed yet, so the first time macOS warns you: right-click it → Open, or System Settings → Privacy &amp; Security → Open Anyway.</p>
-            <p><b>Linux:</b> <code>chmod +x DiagraMinder-linux &amp;&amp; ./DiagraMinder-linux</code></p>
-            <p class="home-note">It opens in its own window and tells you when there is a new version. Your projects live outside the program, so updating never touches them.</p>
+        <li class="home-fs">
+          <span class="home-fs-n">2</span>
+          <div class="home-fs-main">
+            <h3 class="home-fs-t">Open it</h3>
+            <p class="home-fs-s">Its own window. It tells you when there is a new version.</p>
+            <details class="home-more">
+              <summary>Details</summary>
+              <p><b>Windows:</b> double-click it.</p>
+              <p><b>macOS:</b> unzip it and move the app to Applications. It is not signed yet, so the first time macOS warns you: right-click it → Open, or System Settings → Privacy &amp; Security → Open Anyway.</p>
+              <p><b>Linux:</b> <code>chmod +x DiagraMinder-linux &amp;&amp; ./DiagraMinder-linux</code></p>
+              <p>Your projects live outside the program, so updating never touches them.</p>
+            </details>
+          </div>
+          <div class="home-fs-act"><code class="home-chip">./DiagraMinder-linux</code></div>
+        </li>
+        <li class="home-fs">
+          <span class="home-fs-n">3</span>
+          <div class="home-fs-main">
+            <h3 class="home-fs-t">Connect Claude Code</h3>
+            <p class="home-fs-s">Paste the <code>.mcp.json</code> at your project root, then run <code>/mcp</code>.</p>
+            <details class="home-more">
+              <summary>Details</summary>
+              <p>In the app: <b>Settings → This program</b>. Copy the <code>.mcp.json</code> it shows — address and password already filled in — and paste it at the root of your project.</p>
+              <p>In Claude Code, run <code>/mcp</code>: it should show <code>diagraminder</code> connected. Ask it to read your diagrams before it touches the code.</p>
+            </details>
+          </div>
+          <div class="home-fs-act"><code class="home-chip">/mcp</code></div>
+        </li>
+        <li class="home-fs">
+          <span class="home-fs-n">4</span>
+          <div class="home-fs-main">
+            <h3 class="home-fs-t">Decide what it may do</h3>
+            <p class="home-fs-s">Enforced by the program, not the window.</p>
+            <details class="home-more">
+              <summary>Details</summary>
+              <p>Same screen, <b>What the MCP can do</b>: diagrams only (the default), diagrams + files inside one folder you pick, or also commands.</p>
+            </details>
+          </div>
+          <div class="home-fs-act">
+            <div class="home-levels">
+              <span class="home-level home-level-on">Diagrams only</span>
+              <span class="home-level">+ Files in one folder</span>
+              <span class="home-level">+ Commands</span>
+            </div>
           </div>
         </li>
-        <li class="home-step">
-          <span class="home-step-n">3</span>
-          <span class="home-step-what">Connect Claude Code</span>
-          <div class="home-step-how">
-            <p>In the app: <b>Settings → This program</b>. Copy the <code>.mcp.json</code> it shows — address and password already filled in — and paste it at the root of your project.</p>
-            <p>In Claude Code, run <code>/mcp</code>: it should show <code>diagraminder</code> connected. Ask it to read your diagrams before it touches the code.</p>
+        <li class="home-fs home-fs-opt">
+          <span class="home-fs-n">5</span>
+          <div class="home-fs-main">
+            <h3 class="home-fs-t"><span>Claude web, too</span><span class="home-tag">Optional</span></h3>
+            <p class="home-fs-s">One switch opens a Cloudflare tunnel to the app.</p>
+            <details class="home-more">
+              <summary>Details</summary>
+              <p><b>Reach it from Claude web</b> opens a Cloudflare tunnel (it needs <code>cloudflared</code>; the app tells you how to install it). Add the address it gives you as a custom connector in Claude web: it asks for the password once. The tunnel dies when you turn it off or close the app.</p>
+            </details>
           </div>
-        </li>
-        <li class="home-step">
-          <span class="home-step-n">4</span>
-          <span class="home-step-what">Decide what it may do</span>
-          <div class="home-step-how">
-            <p>Same screen, <b>What the MCP can do</b>: diagrams only (the default), diagrams + files inside one folder you pick, or also commands. The program enforces it, not the window.</p>
-          </div>
-        </li>
-        <li class="home-step">
-          <span class="home-step-n">5</span>
-          <span class="home-step-what">Claude web, too <span class="home-opt">optional</span></span>
-          <div class="home-step-how">
-            <p><b>Reach it from Claude web</b> opens a Cloudflare tunnel (it needs <code>cloudflared</code>; the app tells you how to install it). Add the address it gives you as a custom connector in Claude web: it asks for the password once. The tunnel dies when you turn it off or close the app.</p>
-          </div>
+          <div class="home-fs-act"><code class="home-chip">cloudflared</code></div>
         </li>
       </ol>
 
-      <!-- Camino B: esta web + el backend -->
-      <ol class="home-steps home-steps-web">
-        <li class="home-step">
-          <span class="home-step-n">1</span>
-          <span class="home-step-what">Run the backend</span>
-          <div class="home-step-how">
-            <div class="home-os-btns">
-              <a class="dm-btn-secondary home-os-btn" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/DiagraMinder-Backend-win.exe" rel="noopener">Windows</a>
-              <a class="dm-btn-secondary home-os-btn" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/DiagraMinder-Backend-mac" rel="noopener">macOS</a>
-              <a class="dm-btn-secondary home-os-btn" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/DiagraMinder-Backend-linux" rel="noopener">Linux</a>
+      <!-- Camino B -->
+      <ol class="home-flow home-flow-web">
+        <li class="home-fs">
+          <span class="home-fs-n">1</span>
+          <div class="home-fs-main">
+            <h3 class="home-fs-t">Run the backend</h3>
+            <p class="home-fs-s">A download, or one Python command. No dependencies.</p>
+            <details class="home-more">
+              <summary>Details</summary>
+              <p>From source: clone <a href="https://github.com/JuanseGZZ/diagraminder-backend" target="_blank" rel="noopener">the repo</a> and run <code>python3 backend/server.py</code>. The code is open: read it before you run it.</p>
+            </details>
+          </div>
+          <div class="home-fs-act">
+            <div class="home-os">
+              <a class="home-os-a" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/DiagraMinder-Backend-win.exe" rel="noopener">Windows</a>
+              <a class="home-os-a" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/DiagraMinder-Backend-mac" rel="noopener">macOS</a>
+              <a class="home-os-a" href="https://github.com/JuanseGZZ/diagraminder-backend/releases/latest/download/DiagraMinder-Backend-linux" rel="noopener">Linux</a>
             </div>
-            <p class="home-note">Or from source, no dependencies: clone <a href="https://github.com/JuanseGZZ/diagraminder-backend" target="_blank" rel="noopener">the repo</a> and run <code>python3 backend/server.py</code>. The code is open: read it before you run it.</p>
           </div>
         </li>
-        <li class="home-step">
-          <span class="home-step-n">2</span>
-          <span class="home-step-what">Connect this page</span>
-          <div class="home-step-how">
-            <p>Here: <b>Settings → Connect backend</b>. The first time it asks for a password: the backend prints it when it starts, and keeps it in <code>token.txt</code> inside its data folder.</p>
+        <li class="home-fs">
+          <span class="home-fs-n">2</span>
+          <div class="home-fs-main">
+            <h3 class="home-fs-t">Connect this page</h3>
+            <p class="home-fs-s">Settings → Connect backend, with the password it printed.</p>
+            <details class="home-more">
+              <summary>Details</summary>
+              <p>Here: <b>Settings → Connect backend</b>. The first time it asks for a password: the backend prints it when it starts, and keeps it in <code>token.txt</code> inside its data folder.</p>
+            </details>
           </div>
+          <div class="home-fs-act"><code class="home-chip">token.txt</code></div>
         </li>
-        <li class="home-step">
-          <span class="home-step-n">3</span>
-          <span class="home-step-what">Use the chat</span>
-          <div class="home-step-how">
-            <p>Open the chat and pick <b>Local · Claude Code</b> — or any agent CLI you already have installed. It runs on your own subscription, and it can read and edit the project you choose.</p>
+        <li class="home-fs">
+          <span class="home-fs-n">3</span>
+          <div class="home-fs-main">
+            <h3 class="home-fs-t">Use the chat</h3>
+            <p class="home-fs-s">Pick Local · Claude Code, or any agent CLI you have installed.</p>
+            <details class="home-more">
+              <summary>Details</summary>
+              <p>Open the chat and pick <b>Local · Claude Code</b> — or any agent CLI you already have installed. It runs on your own subscription, and it can read and edit the project you choose.</p>
+            </details>
           </div>
+          <div class="home-fs-act"><span class="home-chip home-chip-ui">Local · Claude Code</span></div>
         </li>
-        <li class="home-step">
-          <span class="home-step-n">4</span>
-          <span class="home-step-what">Connect Claude Code</span>
-          <div class="home-step-how">
-            <p>The backend's panel (<code>http://127.0.0.1:8765/panel</code>) shows the <code>.mcp.json</code> under <b>MCP</b>. Paste it at the root of your project and run <code>/mcp</code> in Claude Code. The same panel sets what the MCP may do.</p>
+        <li class="home-fs">
+          <span class="home-fs-n">4</span>
+          <div class="home-fs-main">
+            <h3 class="home-fs-t">Connect Claude Code</h3>
+            <p class="home-fs-s">The backend panel has the <code>.mcp.json</code> and the MCP permissions.</p>
+            <details class="home-more">
+              <summary>Details</summary>
+              <p>The backend's panel (<code>http://127.0.0.1:8765/panel</code>) shows the <code>.mcp.json</code> under <b>MCP</b>. Paste it at the root of your project and run <code>/mcp</code> in Claude Code. The same panel sets what the MCP may do.</p>
+            </details>
           </div>
+          <div class="home-fs-act"><code class="home-chip">127.0.0.1:8765/panel</code></div>
         </li>
-        <li class="home-step">
-          <span class="home-step-n">5</span>
-          <span class="home-step-what">Claude web, too <span class="home-opt">optional</span></span>
-          <div class="home-step-how">
-            <p>From the same panel, the Cloudflare tunnel gives you an address to add as a custom connector in Claude web. It needs <code>cloudflared</code> and asks for the password once.</p>
+        <li class="home-fs home-fs-opt">
+          <span class="home-fs-n">5</span>
+          <div class="home-fs-main">
+            <h3 class="home-fs-t"><span>Claude web, too</span><span class="home-tag">Optional</span></h3>
+            <p class="home-fs-s">The same panel opens a Cloudflare tunnel.</p>
+            <details class="home-more">
+              <summary>Details</summary>
+              <p>From the same panel, the Cloudflare tunnel gives you an address to add as a custom connector in Claude web. It needs <code>cloudflared</code> and asks for the password once.</p>
+            </details>
           </div>
+          <div class="home-fs-act"><code class="home-chip">cloudflared</code></div>
         </li>
       </ol>
     </div>
 
-    <!-- En desktop: los pasos que faltan (3–5 del camino A) -->
-    <ol class="home-steps home-steps-desktop dm-desktop-only">
-      <li class="home-step">
-        <span class="home-step-n">1</span>
-        <span class="home-step-what">Connect Claude Code</span>
-        <div class="home-step-how">
-          <p><b>Settings → This program</b>. Copy the <code>.mcp.json</code> it shows — address and password already filled in — and paste it at the root of your project.</p>
-          <p>In Claude Code, run <code>/mcp</code>: it should show <code>diagraminder</code> connected. Ask it to read your diagrams before it touches the code.</p>
-        </div>
-      </li>
-      <li class="home-step">
-        <span class="home-step-n">2</span>
-        <span class="home-step-what">Decide what it may do</span>
-        <div class="home-step-how">
-          <p>Same screen, <b>What the MCP can do</b>: diagrams only (the default), diagrams + files inside one folder you pick, or also commands. The program enforces it, not the window.</p>
-        </div>
-      </li>
-      <li class="home-step">
-        <span class="home-step-n">3</span>
-        <span class="home-step-what">Claude web, too <span class="home-opt">optional</span></span>
-        <div class="home-step-how">
-          <p><b>Reach it from Claude web</b> opens a Cloudflare tunnel (it needs <code>cloudflared</code>; the app tells you how to install it). Add the address it gives you as a custom connector in Claude web: it asks for the password once. The tunnel dies when you turn it off or close the app.</p>
-        </div>
-      </li>
-    </ol>
-  </section>
-
-  <!-- ===== LOS MODOS: cinco formas del contexto de un proyecto (doc 37 §1) ===== -->
-  <section class="home-modes">
-    <div class="home-sec-head">
-      <span class="home-kicker">WHAT YOU GET</span>
-      <h2 class="home-h2">Five shapes of your project's context</h2>
-      <p class="home-sub">Not five diagram types: five ways a project remembers. You and Claude read and write all of them.</p>
-    </div>
-    <div class="home-modes-grid">
-
-      <div class="dm-card">
-        <div class="home-mode-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"></circle><circle cx="18" cy="6" r="2.5"></circle><circle cx="12" cy="18" r="2.5"></circle><path d="M12 15.5V12H6V8.5M12 12h6V8.5"></path></svg>
-        </div>
-        <div class="home-mode-name">Organigram</div>
-        <div class="home-mode-role">Documentation</div>
-        <div class="home-mode-desc">The map of what exists and why it was decided that way. Claude reads it before it touches the repo.</div>
-      </div>
-
-      <div class="dm-card">
-        <div class="home-mode-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="5" height="5" rx="1"></rect><circle cx="18" cy="7" r="2.5"></circle><path d="M9 16l4-3 6 2"></path><path d="M4 19h4"></path></svg>
-        </div>
-        <div class="home-mode-name">Canvas</div>
-        <div class="home-mode-role">Global associative memory</div>
-        <div class="home-mode-desc">Everything learned along the way, linked to what it relates to. Neither of you has to remember it.</div>
-      </div>
-
-      <div class="dm-card">
-        <div class="home-mode-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="9" height="3" rx="1"></rect><rect x="3" y="11" width="14" height="3" rx="1"></rect><rect x="3" y="17" width="6" height="3" rx="1"></rect></svg>
-        </div>
-        <div class="home-mode-name">Activities</div>
-        <div class="home-mode-role">Everything sequential</div>
-        <div class="home-mode-desc">What is left, in order, with what depends on what. Claude writes down what it finished and what comes next.</div>
-      </div>
-
-      <div class="dm-card">
-        <div class="home-mode-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"></path><path d="M12 3v9M12 12l8-4.5M12 12l-8-4.5"></path></svg>
-        </div>
-        <div class="home-mode-name">Object</div>
-        <div class="home-mode-role">UML and testing</div>
-        <div class="home-mode-desc">The data model as classes and objects — and the same graph fires the requests that test it.</div>
-      </div>
-
-      <div class="dm-card dm-card-flagship">
-        <div class="home-mode-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="6" r="2.5"></circle><circle cx="19" cy="6" r="2.5"></circle><circle cx="12" cy="18" r="2.5"></circle><path d="M7 7l10 -1M7 8l4.5 8.5M17 8l-4.5 8.5"></path></svg>
-        </div>
-        <div class="home-mode-name">IA Orchestrator</div>
-        <div class="home-mode-role">The harness</div>
-        <div class="home-mode-desc">Agents, the folders each one may touch, and what each one is allowed to run.</div>
-      </div>
-
-    </div>
-    <p class="home-note home-modes-foot">There are two more — a study questionnaire and a document library. They are in there; they are just not the point.</p>
-  </section>
-
-  <section style="position:relative;padding:8px 24px 44px;max-width:1160px;margin:0 auto">
-    <div style="display:flex;flex-wrap:wrap;gap:28px;justify-content:center;padding:20px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:13px;color:var(--text-muted)">
-      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>Your files, on your disk</span>
-      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>No account, ever</span>
-      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>Your own AI keys, or none</span>
-      <span style="display:flex;align-items:center;gap:7px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);display:inline-block"></span>Every change reversible</span>
+    <!-- Desktop: solo lo que falta. El wrapper lleva dm-desktop-only (que fuerza display:block) y la lista adentro conserva su layout. -->
+    <div class="dm-desktop-only">
+      <ol class="home-flow home-flow-desk">
+        <li class="home-fs">
+          <span class="home-fs-n">1</span>
+          <div class="home-fs-main">
+            <h3 class="home-fs-t">Connect Claude Code</h3>
+            <p class="home-fs-s">Paste the <code>.mcp.json</code> at your project root, then run <code>/mcp</code>.</p>
+            <details class="home-more">
+              <summary>Details</summary>
+              <p><b>Settings → This program</b>. Copy the <code>.mcp.json</code> it shows — address and password already filled in — and paste it at the root of your project.</p>
+              <p>In Claude Code, run <code>/mcp</code>: it should show <code>diagraminder</code> connected. Ask it to read your diagrams before it touches the code.</p>
+            </details>
+          </div>
+          <div class="home-fs-act"><code class="home-chip">/mcp</code></div>
+        </li>
+        <li class="home-fs">
+          <span class="home-fs-n">2</span>
+          <div class="home-fs-main">
+            <h3 class="home-fs-t">Decide what it may do</h3>
+            <p class="home-fs-s">Enforced by the program, not the window.</p>
+            <details class="home-more">
+              <summary>Details</summary>
+              <p>Same screen, <b>What the MCP can do</b>: diagrams only (the default), diagrams + files inside one folder you pick, or also commands.</p>
+            </details>
+          </div>
+          <div class="home-fs-act">
+            <div class="home-levels">
+              <span class="home-level home-level-on">Diagrams only</span>
+              <span class="home-level">+ Files in one folder</span>
+              <span class="home-level">+ Commands</span>
+            </div>
+          </div>
+        </li>
+        <li class="home-fs home-fs-opt">
+          <span class="home-fs-n">3</span>
+          <div class="home-fs-main">
+            <h3 class="home-fs-t"><span>Claude web, too</span><span class="home-tag">Optional</span></h3>
+            <p class="home-fs-s">One switch opens a Cloudflare tunnel to the app.</p>
+            <details class="home-more">
+              <summary>Details</summary>
+              <p><b>Reach it from Claude web</b> opens a Cloudflare tunnel (it needs <code>cloudflared</code>; the app tells you how to install it). Add the address it gives you as a custom connector in Claude web: it asks for the password once. The tunnel dies when you turn it off or close the app.</p>
+            </details>
+          </div>
+          <div class="home-fs-act"><code class="home-chip">cloudflared</code></div>
+        </li>
+      </ol>
     </div>
   </section>
 
-  <footer style="position:relative;display:flex;align-items:center;justify-content:center;padding:26px;color:var(--text-muted);font-size:12px">
-    <span>Diagra<span style="color:var(--accent)">Minder</span></span>
+  <!-- ===== CONFIANZA: sección propia, no una tira gris ===== -->
+  <section class="home-sec home-trust-sec">
+    <div class="home-trust">
+      <div class="home-trust-lead">
+        <p class="home-eyebrow-plain">Runs on your machine</p>
+        <h2 class="home-h2x">It all runs on your machine.</h2>
+        <p class="home-intro">The app and its backend run locally. The Claude web tunnel only exists while you keep it on. The backend's code is public, so you can read it first.</p>
+        <a class="home-link" href="https://github.com/JuanseGZZ/diagraminder-backend" target="_blank" rel="noopener">Read the backend source</a>
+      </div>
+      <div class="home-trust-grid">
+        <div class="home-trust-item">
+          <h3 class="home-trust-t">Your files, on your disk</h3>
+          <p class="home-trust-d">Projects are plain files in folders you choose. Updating the app never touches them.</p>
+        </div>
+        <div class="home-trust-item">
+          <h3 class="home-trust-t">No account, ever</h3>
+          <p class="home-trust-d">Nothing to sign up for, nothing to sign in to.</p>
+        </div>
+        <div class="home-trust-item">
+          <h3 class="home-trust-t">Your own AI keys, or none</h3>
+          <p class="home-trust-d">Use your own subscription or keys. The canvas works without any AI at all.</p>
+        </div>
+        <div class="home-trust-item">
+          <h3 class="home-trust-t">Every change reversible</h3>
+          <p class="home-trust-d">Yours or the agent's: anything written to a diagram can be undone.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="home-foot">
+    <span class="home-foot-brand">DiagraMinder</span>
+    <span class="home-foot-links">
+      <a href="https://github.com/JuanseGZZ/diagraminder-app/releases/latest" target="_blank" rel="noopener">Releases</a>
+      <a href="https://github.com/JuanseGZZ/diagraminder-backend" target="_blank" rel="noopener">Backend on GitHub</a>
+    </span>
   </footer>
 
 </div>
-
   <div id="boardContainer">
     <div id="board"></div>
   </div>
@@ -1376,7 +1692,7 @@
   <!-- ?v= igual que en el CSS: mientras el zone setting "Browser Cache TTL" de
        Cloudflare pise el no-cache del origen, subir este número es lo único que
        invalida el bundle YA cacheado en los navegadores. -->
-  <script type="module" src="./dist/bundle.js?v=62"></script>
+  <script type="module" src="./dist/bundle.js?v=64"></script>
   <!-- el aviso de estadísticas: solo en diagraminder.com, y el beacon solo si se acepta -->
   <script src="/legal/consent.js?v=1" defer></script>
 </body>
