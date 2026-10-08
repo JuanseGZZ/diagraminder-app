@@ -126,14 +126,40 @@ body {
 .navfoot a.next { text-align: right; }
 
 /* ---------- mobile: el índice se abre por botón ---------- */
+/* Lo que se rompía en un celular (2026-10-08): el header (marca + «Documentación» +
+   ☰ + idioma + «Abrir la app») medía 524px en una pantalla de 390, así que TODA la
+   página se corría de costado y el selector de idioma quedaba cortado; la sombra del
+   índice escondido se asomaba por el borde izquierdo; y una tabla o una línea de
+   código larga empujaban el ancho. Regla: nada en esta página puede ser más ancho que
+   la pantalla — lo que no entra, scrollea DENTRO de su caja. */
 @media (max-width: 860px) {
-  .menu-btn { display: inline-block; }
+  .menu-btn { display: inline-block; order: -1; }
   .side {
-    position: fixed; top: 51px; left: 0; bottom: 0; z-index: 15;
-    width: 280px; flex-basis: 280px; height: auto;
-    transform: translateX(-100%); transition: transform .18s ease;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, .3);
+    position: fixed; top: var(--top-h, 51px); left: 0; bottom: 0; z-index: 15;
+    width: min(280px, 86vw); flex-basis: auto; height: auto;
+    transform: translateX(-100%); transition: transform .18s ease, visibility .18s;
+    visibility: hidden;          /* cerrado no se ve NI su sombra, ni se tabula */
   }
-  body.side-open .side { transform: none; }
-  .main { padding: 22px 18px 70px; }
+  body.side-open .side { transform: none; visibility: visible; box-shadow: 0 8px 30px rgba(0, 0, 0, .3); }
+  .main { padding: 22px 16px 70px; }
+  .doc { overflow-wrap: anywhere; }
+  .doc h1 { font-size: 26px; }
+  .doc table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .doc th, .doc td { min-width: 120px; }
+  .doc pre { white-space: pre; }
+  .doc pre code { overflow-wrap: normal; }
+  .navfoot { flex-direction: column; }
+}
+@media (max-width: 560px) {
+  .top { gap: 8px; padding: 9px 12px; }
+  .top .brand { gap: 8px; min-width: 0; }
+  .top .brand span { display: none; }       /* «Documentación»: ya lo dice la página */
+  .top .brand b { font-size: 15px; }
+  .top .brand img { width: 26px; height: 26px; }
+  .top select, .top .btn { padding: 7px 8px; font-size: 12.5px; }
+  .top .btn { white-space: nowrap; }
+  .top select { max-width: 92px; }
+}
+@media (max-width: 380px) {
+  .top .brand b { display: none; }          /* en las MUY chicas queda el logo */
 }

@@ -21,7 +21,7 @@
   <!-- ?v= rompe el cache del borde cuando cambia el CSS. El nginx de infra/web ya
        manda no-cache, pero una copia vieja YA cacheada sobrevive hasta su TTL: subir
        este número la invalida al instante (index.html se sirve siempre fresco). -->
-  <link rel="stylesheet" href="app/bolzaDeEstilos/styles.css?v=60">
+  <link rel="stylesheet" href="app/bolzaDeEstilos/styles.css?v=62">
 </head>
 
 <body>
@@ -489,21 +489,30 @@
         <!-- modo (popup tipo VSCode) -->
         <div class="ia-chat-pop ia-chat-pop-up" id="ia-chat-mode">
           <button class="ia-chat-ctl-btn" id="ia-chat-mode-btn">
-            <span class="ia-chat-ctl-label" id="ia-chat-mode-label">Edit automatically</span>
+            <span class="ia-chat-ctl-label" id="ia-chat-mode-label">Auto accept</span>
             <svg class="ia-chat-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
           </button>
           <div class="ia-chat-menu ia-chat-menu-modes hidden" id="ia-chat-mode-menu">
+            <!-- La CLAVE `auto-edit` se queda (está guardada en las sesiones de la gente);
+                 lo que cambió es lo que hace: aprueba TODO, no solo las ediciones. -->
+            <button class="ia-chat-mode-opt" data-mode="ask">
+              <span class="ia-chat-mode-opt-text">
+                <span class="ia-chat-mode-opt-title">Ask before</span>
+                <span class="ia-chat-mode-opt-desc">Asks you before each edit or command</span>
+              </span>
+              <svg class="ia-chat-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
+            </button>
             <button class="ia-chat-mode-opt" data-mode="auto-edit">
               <span class="ia-chat-mode-opt-text">
-                <span class="ia-chat-mode-opt-title">Edit automatically</span>
-                <span class="ia-chat-mode-opt-desc">Edits the selected text or file</span>
+                <span class="ia-chat-mode-opt-title">Auto accept</span>
+                <span class="ia-chat-mode-opt-desc">Approves everything on its own; you see each step</span>
               </span>
               <svg class="ia-chat-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
             </button>
             <button class="ia-chat-mode-opt" data-mode="plan">
               <span class="ia-chat-mode-opt-text">
-                <span class="ia-chat-mode-opt-title">Plan mode</span>
-                <span class="ia-chat-mode-opt-desc">Explores and proposes a plan before editing</span>
+                <span class="ia-chat-mode-opt-title">Plan</span>
+                <span class="ia-chat-mode-opt-desc">Proposes a plan; if you approve it, does it all without asking</span>
               </span>
               <svg class="ia-chat-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>
             </button>
@@ -1367,6 +1376,8 @@
   <!-- ?v= igual que en el CSS: mientras el zone setting "Browser Cache TTL" de
        Cloudflare pise el no-cache del origen, subir este número es lo único que
        invalida el bundle YA cacheado en los navegadores. -->
-  <script type="module" src="./dist/bundle.js?v=60"></script>
+  <script type="module" src="./dist/bundle.js?v=62"></script>
+  <!-- el aviso de estadísticas: solo en diagraminder.com, y el beacon solo si se acepta -->
+  <script src="/legal/consent.js?v=1" defer></script>
 </body>
 </html>

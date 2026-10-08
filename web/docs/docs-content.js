@@ -435,9 +435,11 @@ const DOCS = [
 <p>The selector at the top of the chat only offers what you can use <b>right now</b>: with the backend not connected it shows your APIs plus <b>Connect backend</b>, and <b>Add API key</b>. Without either, the chat stays off until you set one up.</p>
 <h2>Modes</h2>
 <ul>
-  <li><b>Edit automatically</b>: it applies the changes.</li>
-  <li><b>Plan mode</b>: it explores and proposes a plan before touching anything.</li>
+  <li><b>Ask before</b>: it asks you before each edit or command — a card in the chat with Allow / Deny.</li>
+  <li><b>Auto accept</b>: it approves everything on its own, commands included. Nothing is hidden: each approval shows up in the list of steps.</li>
+  <li><b>Plan</b>: it explores and writes a plan first. You read it in the chat: <b>Approve and do it all</b> runs the whole plan without asking again; <b>Keep planning</b> sends it back to refine.</li>
 </ul>
+<p>The live approvals work with <b>Claude Code</b>. Other agent CLIs have no way to ask in the middle of a turn.</p>
 <h2>Commands</h2>
 <p>The <b>/</b> button in the composer (or typing <code>/</code>) opens the commands. They do not send by themselves: they drop a long prompt into the box so you can read it and adjust it before sending.</p>
 <ul>
@@ -453,9 +455,11 @@ const DOCS = [
 <p>El selector de arriba del chat solo ofrece lo que podés usar <b>ahora</b>: con el backend sin conectar muestra tus APIs más <b>Conectar backend</b>, y <b>Agregar API key</b>. Sin ninguna de las dos, el chat queda apagado hasta que configures una.</p>
 <h2>Modos</h2>
 <ul>
-  <li><b>Editar automáticamente</b>: aplica los cambios.</li>
-  <li><b>Modo plan</b>: explora y propone un plan antes de tocar nada.</li>
+  <li><b>Preguntar antes</b>: te pregunta antes de cada edición o comando — una tarjeta en el chat con Permitir / Rechazar.</li>
+  <li><b>Aceptar todo</b>: aprueba todo solo, comandos incluidos. No se esconde nada: cada aprobación queda en la lista de pasos.</li>
+  <li><b>Plan</b>: explora y escribe un plan primero. Lo leés en el chat: <b>Aprobar y hacerlo todo</b> ejecuta el plan entero sin volver a preguntar; <b>Seguir planeando</b> lo devuelve para afinarlo.</li>
 </ul>
+<p>Las aprobaciones en vivo funcionan con <b>Claude Code</b>. Los otros CLIs de agentes no tienen cómo preguntar en medio de un turno.</p>
 <h2>Comandos</h2>
 <p>El botón <b>/</b> del composer (o tipear <code>/</code>) abre los comandos. No se mandan solos: dejan un prompt largo en el cuadro para que lo leas y lo ajustes antes de enviar.</p>
 <ul>
@@ -529,6 +533,7 @@ const DOCS = [
   <tr><td>Your API keys</td><td>Your browser. Never in the diagram.</td></tr>
   <tr><td>The backend's password</td><td>Your machine.</td></tr>
   <tr><td>What you send to an AI</td><td>Straight to the provider you chose, or to the CLI on your machine. Not through us.</td></tr>
+  <tr><td>Visit statistics (diagraminder.com only)</td><td>Cloudflare Web Analytics, only if you accept the notice: how many people visit, no cookies. Never in the desktop app.</td></tr>
 </table>
 <p>Full text: <a href="/privacidad">Privacy Policy</a> · <a href="/terminos">Terms of Service</a>.</p>`,
     es: `<p class="lead">Dónde vive cada cosa, en un solo lugar. La versión corta: en tu máquina.</p>
@@ -539,6 +544,7 @@ const DOCS = [
   <tr><td>Tus API keys</td><td>Tu navegador. Nunca en el diagrama.</td></tr>
   <tr><td>La contraseña del backend</td><td>Tu máquina.</td></tr>
   <tr><td>Lo que le mandás a una IA</td><td>Directo al proveedor que elegiste, o al CLI de tu máquina. No pasa por nosotros.</td></tr>
+  <tr><td>Estadísticas de visitas (solo diagraminder.com)</td><td>Cloudflare Web Analytics, solo si aceptás el aviso: cuánta gente entra, sin cookies. Nunca en la app de escritorio.</td></tr>
 </table>
 <p>Texto completo: <a href="/privacidad">Política de Privacidad</a> · <a href="/terminos">Condiciones del Servicio</a>.</p>`,
   },
