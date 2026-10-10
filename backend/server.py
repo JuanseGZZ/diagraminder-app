@@ -69,7 +69,7 @@ DEFAULT_PORT = 8765
 # del orquestador necesitan la URL propia para hablarle al MCP del editor.
 PORT = DEFAULT_PORT
 NAME = "DiagraMinder"
-VERSION = "0.37.1"   # orquestador: default claude-sonnet-5-5
+VERSION = "0.39.0"   # el nodo GitHub del orquestador (agGithub, /gh/*)
 
 # ===================== rutas / disco =====================
 
@@ -206,6 +206,22 @@ def oauth():
         import mcp_oauth
         _OAUTH = mcp_oauth.OAuth()
     return _OAUTH
+
+
+# Las rutas del mock del modo Object (doc 23 §Mock). Una instancia por proceso, que
+# carga `mocks.json` al primer uso: el mock sobrevive a un reinicio del backend.
+_MOCKS = None
+_MOCKS_LOCK = threading.Lock()
+
+
+def mock_store():
+    global _MOCKS
+    with _MOCKS_LOCK:
+        if _MOCKS is None:
+            import mocks
+            os.makedirs(app_dir(), exist_ok=True)
+            _MOCKS = mocks.MockStore(os.path.join(app_dir(), "mocks.json"))
+    return _MOCKS
 
 
 def mcp_config_json():
@@ -801,6 +817,25 @@ class Handler(BaseHTTPRequestHandler):
         except sourcever.SvError as e:
             self._json(e.code, {"error": e.msg})
 
+    def _ghnode(self, pid, node_id, fn):
+        """Una operación sobre el nodo GitHub `node_id` del orquestador `pid` (doc 28
+        §GitHub): resuelve ctx + grafo + nodo y traduce los errores."""
+        import ghrepo
+        ctx = orch_ctx(pid)
+        if not ctx:
+            self._json(409, {"error": "the orchestrator is not synced", "code": "not_synced"})
+            return
+        try:
+            graph = orchestrator.load_graph(ctx)
+            node = orchestrator.gh_find(ctx, graph, node_id)
+            self._json(200, fn(ctx, graph, node))
+        except orchestrator.OrchError as e:
+            self._json(e.code, {"error": e.msg})
+        except ghrepo.GhError as e:
+            self._json(e.code, {"error": e.msg})
+        except (TypeError, ValueError):
+            self._json(400, {"error": "invalid nodeId"})
+
     def _orch_stream(self, pid, since):
         """SSE de eventos del run del orquestador (para pintar el canvas en vivo)."""
         ctx = orch_ctx(pid)
@@ -884,11 +919,99 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return fn(pdir)
 
+    # --- mock del modo Object (doc 23 §Mock) -----------------------------
+    def _mock_local(self):
+        """¿El pedido viene de ESTA máquina? El server escucha solo en 127.0.0.1, así
+        que lo único que llega de afuera es el túnel del MCP — y detrás del túnel el
+        Host es el de la URL pública. El mock no se publica a internet por abrir el
+        túnel para otra cosa. (También corta un DNS rebinding: Host = otro dominio.)"""
+        host = (self.headers.get("Host") or "").strip().lower()
+        if host.startswith("["):
+            host = host.split("]", 1)[0] + "]"
+        else:
+            host = host.split(":", 1)[0]
+        return host in ("127.0.0.1", "localhost", "[::1]")
+
+    def _mock_send(self, status, headers, data, head=False):
+        self.send_response(status)
+        for k, v in headers.items():
+            self.send_header(k, v)
+        # CORS abierto: el que le pega es TU front, desde otro puerto. Lo que se sirve
+        # acá es data de prueba que vos pusiste en el diagrama, sin token.
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Expose-Headers", "*")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        if not head:
+            self.wfile.write(data)
+
+    def _mock_serve(self, method):
+        """`<método> /mock/<projectId>/<ruta>` — PÚBLICO (sin el token local): le
+        pegan programas que no lo tienen. Solo desde esta máquina (_mock_local)."""
+        import mocks
+        parsed = urlparse(self.path)
+        partes = parsed.path.split("/", 3)          # ["", "mock", pid, resto]
+        pid = partes[2] if len(partes) > 2 else ""
+        ruta = "/" + (partes[3] if len(partes) > 3 else "")
+        req_body = self._read_raw() if method not in ("GET", "HEAD") else b""
+        jsonh = {"Content-Type": "application/json; charset=utf-8"}
+        if not self._mock_local():
+            self._mock_send(403, jsonh, b'{"error": "the mock only answers requests from this machine"}')
+            return
+        store = mock_store()
+        entry = store.get(pid) if mocks.valid_pid(pid) else None
+        if not entry:
+            self._mock_send(404, jsonh, json.dumps({
+                "error": "no mock published for this project",
+                "hint": "open the Object project in DiagraMinder with the backend connected"}).encode())
+            return
+        route, params, allow = mocks.match(entry["routes"], method, ruta)
+        if not route:
+            if allow:
+                status, headers, data = 405, {**jsonh, "Allow": ", ".join(allow)}, json.dumps(
+                    {"error": f"{method} not allowed on {ruta}", "allow": allow}).encode()
+            else:
+                rutas = [f"{r['method']} {r['path']}" for r in entry["routes"]]
+                status, headers, data = 404, jsonh, json.dumps(
+                    {"error": f"no mock route for {method} {ruta}", "routes": rutas}).encode()
+        else:
+            if route.get("delayMs"):
+                time.sleep(route["delayMs"] / 1000)
+            status, headers, data = mocks.build_response(route, params)
+        store.record(pid, mocks.log_entry(method, ruta, parsed.query, status, route, req_body))
+        self._mock_send(status, headers, data, head=(method == "HEAD"))
+
     # --- verbos ----------------------------------------------------------
     def do_OPTIONS(self):
         self.send_response(204)
-        self._cors()
+        if urlparse(self.path).path.startswith("/mock/"):
+            # el preflight de TU front: cualquier método, y los headers que pida
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers",
+                             self.headers.get("Access-Control-Request-Headers") or "*")
+            self.send_header("Access-Control-Max-Age", "600")
+        else:
+            self._cors()
         self.end_headers()
+
+    def _solo_mock(self, method):
+        if urlparse(self.path).path.startswith("/mock/"):
+            self._mock_serve(method)
+        else:
+            self._json(405, {"error": "method not allowed"})
+
+    def do_PUT(self):
+        self._solo_mock("PUT")
+
+    def do_PATCH(self):
+        self._solo_mock("PATCH")
+
+    def do_DELETE(self):
+        self._solo_mock("DELETE")
+
+    def do_HEAD(self):
+        self._solo_mock("HEAD")
 
 
     def _static(self, full):
@@ -1092,6 +1215,9 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         q = parse_qs(parsed.query)
 
+        if path.startswith("/mock/"):
+            self._mock_serve("GET")
+            return
         # Panel de control (doc 18 §Panel): la página se sirve SIN auth porque ES
         # la que trae el token adentro; queda protegida por el loopback + la falta
         # de CORS (ver _html). Todo lo que hace después va con token, como la web.
@@ -1295,6 +1421,24 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/orch/rundetail":
             self._orch(q.get("projectId", [None])[0],
                        lambda ctx: orchestrator.run_detail(ctx, q.get("runId", [None])[0]))
+        elif path in ("/gh/tools", "/gh/status"):
+            import ghrepo
+            def _tools(ctx, graph, node):
+                g = orchestrator.gh_node(ctx, node)
+                return {"tools": ghrepo.tool_specs(g["perm"], g["merge"])}
+            def _status(ctx, graph, node):
+                g = orchestrator.gh_node(ctx, node)
+                return {"repo": g["repo"], "path": g["path"], "tokenSet": bool(g["token"]),
+                        "perm": g["perm"], "merge": g["merge"], **ghrepo.status(g["path"])}
+            self._ghnode(q.get("projectId", [""])[0], q.get("nodeId", [""])[0],
+                     _tools if path == "/gh/tools" else _status)
+        elif path == "/mocks/log":
+            # los pedidos recientes que recibió el mock de un proyecto (doc 23 §Mock)
+            pid = q.get("projectId", [""])[0]
+            entry = mock_store().get(pid)
+            self._json(200, {"log": mock_store().log(pid),
+                             "routes": len(entry["routes"]) if entry else 0,
+                             "published": entry["ts"] if entry else None})
         elif path == "/orch/inspect":
             # radiografía de un agente: el system y las tools EXACTOS que recibiría
             # si girara ahora + lo que se le mandó (botones Context / Tools)
@@ -1305,6 +1449,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if path.startswith("/mock/"):
+            self._mock_serve("POST")
+            return
         if path.startswith("/orch/hook/"):
             # PÚBLICO (doc 28 decisión V): lo autentica el TOKEN PROPIO del hook
             # (se lo diste al sistema externo), no el token local de la web.
@@ -1378,6 +1525,46 @@ class Handler(BaseHTTPRequestHandler):
             self._cancel(parse_qs(urlparse(self.path).query).get("runId", [None])[0])
         elif path == "/fetch":
             self._proxy_fetch(self._read_json())
+        # --- el nodo GitHub del orquestador (doc 28 §GitHub) ---
+        elif path in ("/gh/call", "/gh/verify", "/gh/sync"):
+            import ghrepo
+            b = self._read_json()
+            def _call(ctx, graph, node):
+                return {"result": orchestrator.gh_call(ctx, graph, node["id"], b.get("tool") or "",
+                                                       b.get("args") or {}, b.get("author") or "IA")}
+            def _verify(ctx, graph, node):
+                g = orchestrator.gh_node(ctx, node)
+                repo = ghrepo.parse_repo(b.get("repo")) or g["repo"]
+                if not repo:
+                    raise ghrepo.GhError(400, "That doesn't look like a repository: use owner/name.")
+                return ghrepo.verify(repo, g["token"])
+            def _sync(ctx, graph, node):
+                # lo pide el HUMANO desde el panel: clona si falta y trae lo último (si
+                # el clon está limpio). No pasa por el permiso del nodo: es para los agentes.
+                g = orchestrator.gh_node(ctx, node)
+                with ghrepo.lock_for(g["path"]):
+                    err = orchestrator.gh_prepare(ctx, node)
+                    if err:
+                        raise ghrepo.GhError(400, err)
+                    try:
+                        pulled = ghrepo.pull(g["path"], g["repo"], g["token"])
+                    except ghrepo.GhError as e:
+                        pulled = {"ok": False, "error": e.msg}
+                    return {"pull": pulled, **ghrepo.status(g["path"])}
+            fn = {"/gh/call": _call, "/gh/verify": _verify, "/gh/sync": _sync}[path]
+            self._ghnode(b.get("projectId") or "", b.get("nodeId"), fn)
+        # --- mock del modo Object (doc 23 §Mock): la web publica la tabla de rutas ---
+        elif path == "/mocks/publish":
+            import mocks
+            b = self._read_json()
+            try:
+                self._json(200, mock_store().publish(b.get("projectId"), b.get("name"),
+                                                     b.get("routes") or []))
+            except mocks.MockError as e:
+                self._json(e.code, {"error": e.msg})
+        elif path == "/mocks/logclear":
+            mock_store().clear_log(self._read_json().get("projectId") or "")
+            self._json(200, {"ok": True})
         # --- modo editor (doc 27) ---
         elif path == "/editor/target":
             b = self._read_json()
@@ -2092,8 +2279,10 @@ class Handler(BaseHTTPRequestHandler):
     def _proxy_fetch(self, body):
         """Hace un request HTTP server-side y devuelve la respuesta. Lo usa el modo
         object para mandar fetches sin chocar con CORS (el browser no puede). Una
-        respuesta HTTP (incluido 4xx/5xx) es ok=True con su status/body; un error de
-        red/DNS es ok=False con el mensaje."""
+        respuesta HTTP (incluido 4xx/5xx) es ok=True con su status/body/headers; un
+        error de red/DNS es ok=False con el mensaje. Los `headers` (2026-10-08) los usa
+        el nodo WEB del canvas: X-Frame-Options / frame-ancestors dicen si el sitio se
+        deja mostrar en un iframe, y desde el navegador eso no se puede saber."""
         url = (body.get("url") or "").strip()
         method = (body.get("method") or "GET").upper()
         raw_headers = body.get("headers") or {}
@@ -2121,14 +2310,16 @@ class Handler(BaseHTTPRequestHandler):
             with urllib.request.urlopen(req, timeout=30, context=ctx) as resp:
                 text = resp.read().decode("utf-8", errors="replace")
                 self._json(200, {"ok": True, "status": resp.status,
-                                 "statusText": getattr(resp, "reason", "") or "", "body": text})
+                                 "statusText": getattr(resp, "reason", "") or "", "body": text,
+                                 "headers": dict(resp.headers.items())})
         except urllib.error.HTTPError as e:
             try:
                 text = e.read().decode("utf-8", errors="replace")
             except Exception:
                 text = ""
             self._json(200, {"ok": True, "status": e.code,
-                             "statusText": getattr(e, "reason", "") or "", "body": text})
+                             "statusText": getattr(e, "reason", "") or "", "body": text,
+                             "headers": dict(e.headers.items()) if e.headers else {}})
         except Exception as e:
             self._json(200, {"ok": False, "error": str(e)})
 
@@ -2257,6 +2448,11 @@ def main():
     if "--mcp-fs" in sys.argv:
         import editor_mcp
         editor_mcp.main()
+        return
+    # MCP de un nodo GitHub del orquestador (doc 28 §GitHub): lo lanza Claude Code.
+    if "--mcp-gh" in sys.argv:
+        import github_mcp
+        github_mcp.main()
         return
 
     # MCP de los DIAGRAMAS (doc 37 §F18): lo lanza Claude Code —o cualquier cliente

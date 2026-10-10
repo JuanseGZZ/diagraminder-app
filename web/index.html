@@ -21,7 +21,7 @@
   <!-- ?v= rompe el cache del borde cuando cambia el CSS. El nginx de infra/web ya
        manda no-cache, pero una copia vieja YA cacheada sobrevive hasta su TTL: subir
        este número la invalida al instante (index.html se sirve siempre fresco). -->
-  <link rel="stylesheet" href="app/bolzaDeEstilos/styles.css?v=64">
+  <link rel="stylesheet" href="app/bolzaDeEstilos/styles.css?v=89">
 </head>
 
 <body>
@@ -146,7 +146,7 @@
             <span class="tunnel-badge-dot" aria-hidden="true"></span><span>Tunnel</span>
           </button>
           <button id="chat-btn" class="nav-pill" title="Chat with the AI"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>AI</button>
-          <button id="ia-btn" class="nav-pill" title="Settings, connectors and appearance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5 15.4 17.5M15.4 6.5 8.6 10.5"/></svg>Settings</button>
+          <button id="ia-btn" class="nav-pill" title="Settings, connectors and appearance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>Settings</button>
         </li>
       </ul>
       <button id="nav-collapse-btn" class="nav-collapse-btn" title="Hide top bar" aria-label="Hide top bar"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>
@@ -161,8 +161,12 @@
       <button id="aside-toggle" class="aside-toggle" title="Hide / show panel">◀</button>
     </div>
     <div class="aside-search-wrap">
-      <input id="aside-search" type="search" placeholder="Search…" aria-label="Search explorer" />
+      <label class="exp-search">
+        <input id="aside-search" class="exp-search-input" type="search" placeholder="Search…" aria-label="Search explorer" />
+      </label>
     </div>
+    <!-- filtro por tipo (solo en el modo Object): los chips los arma renderAside() -->
+    <div id="aside-type-filter" class="exp-filter hidden" role="group" aria-label="Filter by type"></div>
     <div id="aside-tree" class="aside-tree"></div>
     <div id="aside-resizer" class="aside-resizer" title="Drag to resize width"></div>
   </aside>
@@ -201,16 +205,27 @@
     </div>
   </aside>
 
+  <!-- Settings (polish v1, Claude Design 2026-10-09): cada grupo = cabecera (título +
+       para qué sirve, en una línea) + filas (etiqueta a la izquierda, control a la
+       derecha). Los ids son los de siempre: los cablean localDownload.js, iaApis.js,
+       localBackend.js, voice y ui.js (tema). -->
   <aside id="ia-aside" class="side-panel side-panel-right">
     <div class="side-panel-header">
       <span class="side-panel-title">Settings</span>
       <button class="side-panel-close" data-close="ia-aside" title="Close">✕</button>
     </div>
     <div class="side-panel-body">
-      <section class="side-panel-group">
-        <p class="side-panel-group-title">Backend</p>
-        <button class="side-panel-btn dm-web-only" id="ia-download-local">Download backend</button>
-      <div class="ia-download hidden dm-web-only" id="ia-download-options">
+      <!-- el grupo ENTERO es solo-web: en desktop antes quedaba el título sin nada abajo -->
+      <section class="side-panel-group dm-web-only">
+        <header class="sp-group-head">
+          <h3 class="side-panel-group-title">Local backend</h3>
+          <p class="sp-group-desc">Lets Claude Code reach this canvas over MCP.</p>
+        </header>
+        <div class="sp-row">
+          <div class="sp-row-label"><b>Backend app</b><span class="sp-row-sub">macOS · Windows · Linux</span></div>
+          <div class="sp-row-ctl"><button class="side-panel-btn dm-web-only" id="ia-download-local">Download backend</button></div>
+        </div>
+      <div class="ia-download hidden" id="ia-download-options">
 
         <div class="ia-dl-group">
           <p class="ia-dl-title">The whole app <span class="ia-dl-badge">recommended</span></p>
@@ -266,61 +281,73 @@
           ↗ View the code on GitHub
         </a>
       </div>
-
-
       </section>
 
       <section class="side-panel-group">
-        <p class="side-panel-group-title">Connections</p>
-        <button class="side-panel-btn" id="ia-manage-apis">Add API</button>
-      <div class="ia-apis hidden" id="ia-apis-panel">
-        <ul class="ia-apis-list" id="ia-apis-list"></ul>
-        <form class="ia-apis-form" id="ia-apis-form">
-          <input class="ia-apis-input" id="ia-api-name" type="text" placeholder="Name (e.g. My Anthropic key)" required />
-          <select class="ia-apis-input" id="ia-api-provider">
-            <option value="anthropic">Anthropic (Claude)</option>
-            <option value="openai">OpenAI (GPT)</option>
-            <option value="google">Google (Gemini)</option>
-            <option value="other">Other</option>
-          </select>
-          <input class="ia-apis-input" id="ia-api-key" type="password" placeholder="API key" autocomplete="off" required />
-          <input class="ia-apis-input ia-apis-other-only hidden" id="ia-api-url" type="text" placeholder="Endpoint URL (OpenAI-compatible)" autocomplete="off" />
-          <input class="ia-apis-input ia-apis-other-only hidden" id="ia-api-model" type="text" placeholder="Model (e.g. gpt-4o-mini, llama-3.1…)" autocomplete="off" />
-          <button class="ia-apis-add" type="submit">Add API</button>
-        </form>
-      </div>
+        <header class="sp-group-head">
+          <h3 class="side-panel-group-title">AI providers</h3>
+          <p class="sp-group-desc">API keys the AI chat can use. Stored on this machine.</p>
+        </header>
+        <div class="sp-row">
+          <div class="sp-row-label"><b>API keys</b><span class="sp-row-sub" id="ia-apis-count">None yet</span></div>
+          <div class="sp-row-ctl"><button class="side-panel-btn" id="ia-manage-apis">Add API</button></div>
+        </div>
+        <div class="ia-apis hidden" id="ia-apis-panel">
+          <ul class="ia-apis-list" id="ia-apis-list"></ul>
+          <form class="ia-apis-form" id="ia-apis-form">
+            <input class="ia-apis-input" id="ia-api-name" type="text" placeholder="Name (e.g. My Anthropic key)" required />
+            <select class="ia-apis-input" id="ia-api-provider">
+              <option value="anthropic">Anthropic (Claude)</option>
+              <option value="openai">OpenAI (GPT)</option>
+              <option value="google">Google (Gemini)</option>
+              <option value="other">Other</option>
+            </select>
+            <input class="ia-apis-input" id="ia-api-key" type="password" placeholder="API key" autocomplete="off" required />
+            <input class="ia-apis-input ia-apis-other-only hidden" id="ia-api-url" type="text" placeholder="Endpoint URL (OpenAI-compatible)" autocomplete="off" />
+            <input class="ia-apis-input ia-apis-other-only hidden" id="ia-api-model" type="text" placeholder="Model (e.g. gpt-4o-mini, llama-3.1…)" autocomplete="off" />
+            <div class="sp-actions"><button class="ia-apis-add side-panel-btn is-primary" type="submit">Add API</button></div>
+          </form>
+        </div>
+      </section>
 
       <!-- Dónde guarda TODO el backend local (su raíz en disco). Solo tiene
            sentido con el backend conectado: sin él no hay nada que mover. -->
-      <div class="side-panel-row" id="local-root-row">
-        <span class="side-panel-row-label">Storage folder</span>
-        <span class="side-panel-row-value" id="local-root-path">—</span>
-      </div>
-      <button class="side-panel-btn" id="local-root-change">Change storage folder</button>
-
+      <section class="side-panel-group" id="local-root-row">
+        <header class="sp-group-head">
+          <h3 class="side-panel-group-title">Storage</h3>
+          <p class="sp-group-desc">Where your projects are saved on disk.</p>
+        </header>
+        <code class="sp-path" id="local-root-path">—</code>
+        <div class="sp-row-ctl"><button class="side-panel-btn" id="local-root-change">Change storage folder</button></div>
       </section>
 
       <section class="side-panel-group">
-        <p class="side-panel-group-title">Voice</p>
-        <div class="side-panel-row">
-          <span class="side-panel-row-label">Speech engine</span>
-          <select class="voice-select" id="voice-engine">
-            <option value="auto">Automatic</option>
-            <option value="webspeech">Browser (free)</option>
-            <option value="cloud">Cloud (API key)</option>
-          </select>
+        <header class="sp-group-head">
+          <h3 class="side-panel-group-title">Voice</h3>
+          <p class="sp-group-desc">Dictation and voice calls with the AI.</p>
+        </header>
+        <div class="sp-row">
+          <div class="sp-row-label"><label for="voice-engine">Speech engine</label></div>
+          <div class="sp-row-ctl">
+            <select class="voice-select" id="voice-engine">
+              <option value="auto">Automatic</option>
+              <option value="webspeech">Browser (free)</option>
+              <option value="cloud">Cloud (API key)</option>
+            </select>
+          </div>
         </div>
-        <div class="side-panel-row voice-cloud-only hidden">
-          <span class="side-panel-row-label">Transcription key</span>
-          <select class="voice-select" id="voice-api"></select>
+        <div class="sp-row voice-cloud-only hidden">
+          <div class="sp-row-label"><label for="voice-api">Transcription key</label></div>
+          <div class="sp-row-ctl"><select class="voice-select" id="voice-api"></select></div>
         </div>
-        <div class="side-panel-row voice-cloud-only hidden">
-          <span class="side-panel-row-label">Transcription model</span>
-          <input class="voice-input" id="voice-model" type="text" placeholder="Provider default" autocomplete="off" />
+        <div class="sp-row voice-cloud-only hidden">
+          <div class="sp-row-label"><label for="voice-model">Transcription model</label></div>
+          <div class="sp-row-ctl"><input class="voice-input" id="voice-model" type="text" placeholder="Provider default" autocomplete="off" /></div>
         </div>
-        <div class="side-panel-row">
-          <span class="side-panel-row-label">Language</span>
-          <select class="voice-select" id="voice-lang">
+        <div class="sp-row">
+          <div class="sp-row-label"><label for="voice-lang">Language</label></div>
+          <div class="sp-row-ctl">
+            <select class="voice-select" id="voice-lang">
             <option value="auto">Same as the app</option>
             <option value="es-ES">Spanish (Spain)</option>
             <option value="es-419">Spanish (Latin America)</option>
@@ -331,48 +358,61 @@
             <option value="it-IT">Italian</option>
             <option value="de-DE">German</option>
           </select>
+          </div>
         </div>
-        <div class="side-panel-row">
-          <span class="side-panel-row-label">Pause that ends a sentence</span>
-          <select class="voice-select" id="voice-silence">
-            <option value="600">Short (0.6s)</option>
-            <option value="900">Normal (0.9s)</option>
-            <option value="1400">Long (1.4s)</option>
-            <option value="2000">Very long (2s)</option>
-          </select>
+        <div class="sp-row">
+          <div class="sp-row-label"><label for="voice-silence">Pause that ends a sentence</label></div>
+          <div class="sp-row-ctl">
+            <select class="voice-select" id="voice-silence">
+              <option value="600">Short (0.6s)</option>
+              <option value="900">Normal (0.9s)</option>
+              <option value="1400">Long (1.4s)</option>
+              <option value="2000">Very long (2s)</option>
+            </select>
+          </div>
         </div>
-        <label class="side-panel-check">
+        <label class="sp-check">
           <input type="checkbox" id="voice-commands" />
-          <span>Punctuation commands while dictating ("period", "comma", "new line")</span>
+          <span>Punctuation commands while dictating<small>"period", "comma", "new line"</small></span>
         </label>
-        <label class="side-panel-check">
+        <label class="sp-check">
           <input type="checkbox" id="voice-bargein" />
           <span>Talking over the AI interrupts it during a call</span>
         </label>
-        <p class="voice-hint" id="voice-hint"></p>
+        <p class="voice-hint sp-hint" id="voice-hint"></p>
       </section>
 
       <section class="side-panel-group">
-        <p class="side-panel-group-title">Appearance</p>
-        <div class="side-panel-row">
-          <span class="side-panel-row-label">Theme</span>
-          <button id="theme-toggle" title="Toggle theme">☀</button>
+        <header class="sp-group-head">
+          <h3 class="side-panel-group-title">Appearance</h3>
+        </header>
+        <div class="sp-row">
+          <div class="sp-row-label"><b>Theme</b></div>
+          <div class="sp-row-ctl">
+            <!-- un solo botón con un solo handler (ui.js): la mitad marcada sigue a html[data-theme] -->
+            <button id="theme-toggle" type="button" title="Toggle theme" aria-label="Theme">
+              <span class="sp-seg-opt" data-v="light"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>Light</span>
+              <span class="sp-seg-opt" data-v="dark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>Dark</span>
+            </button>
+          </div>
         </div>
       </section>
     </div>
 
-    <!-- footer pinneado al fondo: conectar local + estado de conexión, con línea separadora -->
-    <div class="side-panel-footer">
-      <p class="side-panel-group-title">Backend connection</p>
-      <button class="side-panel-btn dm-web-only" id="ia-connect-local">Connect backend</button>
-      <!-- Solo en desktop: es la info de ESTE programa (puerto, carpetas, token, CLIs).
-           En la web no hay programa del que hablar. -->
-      <button class="side-panel-btn dm-desktop-only" id="ia-local-panel">This program</button>
-      <div class="ia-status" id="ia-status" data-state="disconnected">
-        <span class="ia-status-dot"></span>
-        <span class="ia-status-text">Disconnected</span>
+    <!-- footer pinneado al fondo: estado de la conexión + conectar (web) / This program (desktop) -->
+    <footer class="side-panel-footer">
+      <h3 class="side-panel-group-title">Backend connection</h3>
+      <div class="sp-row">
+        <!-- el punto lo dibuja el CSS según data-state (los tests leen data-state, no el texto) -->
+        <div class="ia-status" id="ia-status" data-state="disconnected">
+          <span class="ia-status-text">Disconnected</span>
+        </div>
+        <button class="side-panel-btn dm-web-only" id="ia-connect-local">Connect backend</button>
+        <!-- Solo en desktop: es la info de ESTE programa (puerto, carpetas, token, CLIs).
+             En la web no hay programa del que hablar. -->
+        <button class="side-panel-btn dm-desktop-only" id="ia-local-panel">This program</button>
       </div>
-    </div>
+    </footer>
   </aside>
 
 
@@ -554,7 +594,7 @@
   <div id="toolbar" class="toolbar">
     <button id="agregarPrincipalBtn">Add to root</button>
     <div class="toolbar-sep"></div>
-    <button id="versiones-btn" class="toolbar-btn" title="Tree version history"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Versions</button>
+    <button id="versiones-btn" class="toolbar-btn" title="Change history"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>History</button>
     <button id="orch-runs-btn" class="toolbar-btn hidden" title="Run history of this orchestrator"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>Runs</button>
     <button id="orch-keys-btn" class="toolbar-btn hidden" title="API keys of this orchestrator (stored in its connector, never in the diagram)"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.59 17.41A2 2 0 0 0 2 18.83V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 1 1-1v-1a1 1 0 0 1 1-1h.17a2 2 0 0 0 1.42-.59l.81-.81a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>Keys</button>
     <!-- presets de empresa/sector: el trigger es un .toolbar-btn como sus vecinos y
@@ -568,10 +608,16 @@
          import de un JSON. Se muestran/esconden en updateToolbarForType(). -->
     <div id="obj-toolbar-controls" class="hidden obj-toolbar-controls">
       <div class="toolbar-sep"></div>
-      <select id="obj-env-select" class="act-unit-select" title="Environment used by the fetches"></select>
-      <button id="obj-env-btn" class="toolbar-btn" title="Environments and variables ({{name}})"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>Env…</button>
+      <!-- polish Object: entorno = UN control dividido [● entorno ▾ | ⚙]. El punto va
+           verde con un entorno activo y hueco en «(no environment)» (value=""). El
+           botón ya no tiene texto: el rótulo va en title/aria-label. Los ids son los de siempre. -->
+      <div class="obj-env-group">
+        <select id="obj-env-select" title="Environment used by the fetches" aria-label="Environment used by the fetches"></select>
+        <button id="obj-env-btn" class="obj-env-btn" type="button" title="Environments and variables ({{name}})" aria-label="Environments and variables ({{name}})"></button>
+      </div>
       <div class="toolbar-sep"></div>
-      <button id="obj-import-btn" class="toolbar-btn" title="Build the diagram from a JSON body you already have"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>Import JSON</button>
+      <button id="obj-mock-btn" class="obj-import-btn obj-mock-btn" title="Mock server: the Endpoint nodes answer at a local URL"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01M11 7.5h6M11 16.5h6"/></svg>Mock</button>
+      <button id="obj-import-btn" class="obj-import-btn" title="Build the diagram from a JSON body you already have"><svg class="toolbar-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg>Import JSON</button>
     </div>
 
     <div id="act-toolbar-controls" class="hidden act-toolbar-controls">
@@ -617,6 +663,14 @@
       <button id="free-options-btn" class="toolbar-btn">Options ›</button>
 
       <div id="free-options-panel" class="free-options-panel free-options-panel--collapsed">
+        <div class="toolbar-sep"></div>
+
+        <!-- tipo de nodo que crea el doble click en el canvas vacío (lo llena el JS) -->
+        <label class="toolbar-default-type" title="Node created with a double click on the empty canvas">
+          <span class="tcg-label">Default node</span>
+          <select id="free-default-type" class="toolbar-select"></select>
+        </label>
+
         <div class="toolbar-sep"></div>
 
         <!-- color por defecto de nodos -->
@@ -684,7 +738,7 @@
       </div>
       <div class="modal-actions">
         <button id="media-picker-cancel">Cancel</button>
-        <button id="media-picker-ok">Add</button>
+        <button id="media-picker-ok" class="is-primary">Add</button>
       </div>
     </div>
   </div>
@@ -703,7 +757,7 @@
       </div>
       <div class="modal-actions">
         <button id="shape-img-cancel">Cancel</button>
-        <button id="shape-img-ok">Add</button>
+        <button id="shape-img-ok" class="is-primary">Add</button>
       </div>
     </div>
   </div>
@@ -720,7 +774,7 @@
 
   <div id="versiones-overlay" class="modal-overlay hidden">
     <div class="modal modal-wide">
-      <p class="modal-hint">File versions</p>
+      <p class="modal-hint">Change history</p>
       <div id="versiones-body" class="versiones-body"></div>
       <div class="modal-actions">
         <button id="versiones-cerrar">Close</button>
@@ -753,7 +807,7 @@
         <input id="folder-name-input" type="text" placeholder="Folder name" />
       </div>
       <div class="modal-actions">
-        <button id="folder-create-confirm">Create</button>
+        <button id="folder-create-confirm" class="is-primary">Create</button>
         <button id="folder-create-cancel">Cancel</button>
       </div>
     </div>
@@ -782,7 +836,7 @@
       <p class="modal-hint">Custom node catalog</p>
       <div id="custom-catalog-grid" class="catalog-grid"></div>
       <div class="modal-actions">
-        <button id="custom-make-yours">Make yours</button>
+        <button id="custom-make-yours" class="is-primary">Make yours</button>
         <button id="custom-catalog-cancel">Cancel</button>
       </div>
     </div>
@@ -811,17 +865,18 @@
           </label>
         </div>
       </div>
+      <!-- puntas de la flecha (solo en el canvas libre; los botones los arma el JS) -->
+      <div class="modal-field" id="arrow-dir-field">
+        <label>Direction</label>
+        <div class="arrow-dir-seg" id="arrow-dir-seg"></div>
+      </div>
       <div class="modal-actions">
         <button id="arrow-cancel">Cancel</button>
-        <button id="arrow-save">Save</button>
+        <button id="arrow-save" class="is-primary">Save</button>
       </div>
     </div>
   </div>
 
-  <div id="free-node-menu" class="free-menu hidden">
-    <button data-fact="edit">Edit</button>
-    <button data-fact="color">Color</button>
-  </div>
 
   <div id="act-arrow-modal-overlay" class="modal-overlay hidden">
     <div class="modal modal-narrow">
@@ -864,7 +919,7 @@
       </div>
       <div class="modal-actions">
         <button id="act-cancel">Cancel</button>
-        <button id="act-save">Save</button>
+        <button id="act-save" class="is-primary">Save</button>
       </div>
     </div>
   </div>
@@ -965,7 +1020,7 @@
       <div class="editor-max-actions">
         <!-- Save con indicador de cambios (bolita): aplica a las dos sesiones —
              nodo (guarda el nodo sin cerrar) y docs (reescribe el .docx) -->
-        <button id="editor-max-save" class="modal-mode-btn" title="Save (Ctrl+S)"><svg class="modal-mode-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 2.5h9L13.5 4.5v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M5 2.5V6h5V2.5M4.5 14.5V10h7v4.5" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg> Save<span id="editor-max-dirty" class="max-dirty hidden"></span></button>
+        <button id="editor-max-save" class="modal-mode-btn is-primary" title="Save (Ctrl+S)"><svg class="modal-mode-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.5 2.5h9L13.5 4.5v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M5 2.5V6h5V2.5M4.5 14.5V10h7v4.5" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg> Save<span id="editor-max-dirty" class="max-dirty hidden"></span></button>
         <div class="max-menu-wrap">
           <button id="editor-max-view" class="modal-mode-btn" title="View options"><svg class="modal-mode-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 8s2.6-4.5 7-4.5S15 8 15 8s-2.6 4.5-7 4.5S1 8 1 8z" stroke="currentColor" stroke-width="1.1"/><circle cx="8" cy="8" r="1.9" stroke="currentColor" stroke-width="1.1"/></svg> View</button>
           <div id="editor-max-view-menu" class="max-menu hidden">
@@ -999,7 +1054,7 @@
         </div>
         <div class="modal-actions">
           <button id="doc-config-reset">Reset</button>
-          <button id="doc-config-done">Done</button>
+          <button id="doc-config-done" class="is-primary">Done</button>
         </div>
       </div>
     </div>
@@ -1064,7 +1119,18 @@
         <span class="home-eyebrow-dot" aria-hidden="true"></span>
         <span>Shared memory for you and your coding agent</span>
       </p>
-      <h1 class="home-h1">The context of your project, in a canvas you and your agent edit at the same time.</h1>
+      <!-- Slogans que van pasando: SOLO CSS. Están todos en el DOM, apilados en la misma
+           celda de una grilla — así el traductor (que fotografía el texto estático) los
+           traduce, el alto lo fija el más largo (no salta el layout) y no hay JS en el
+           arranque. Cambiar la cantidad = tocar --n y los delays en styles.css. -->
+      <h1 class="home-h1 home-slogans">
+        <span class="home-slogan">The context of your project, in a canvas you and your agent edit at the same time.</span>
+        <span class="home-slogan">Delegating shouldn't mean losing control.</span>
+        <span class="home-slogan">Plan, organize, manage: DiagraMinder.</span>
+        <span class="home-slogan">Directives made visual, organizational memory, up-to-date status.</span>
+        <span class="home-slogan">Always know where you stand and where to go next.</span>
+      </h1>
+      <div class="home-slogan-dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
       <p class="home-lede">Claude Code reads your diagrams before it touches the repo, and writes back what it learned and what is left. You watch the canvas change while it works.</p>
 
       <div class="home-actions">
@@ -1692,8 +1758,8 @@
   <!-- ?v= igual que en el CSS: mientras el zone setting "Browser Cache TTL" de
        Cloudflare pise el no-cache del origen, subir este número es lo único que
        invalida el bundle YA cacheado en los navegadores. -->
-  <script type="module" src="./dist/bundle.js?v=65"></script>
+  <script type="module" src="./dist/bundle.js?v=89"></script>
   <!-- el aviso de estadísticas: solo en diagraminder.com, y el beacon solo si se acepta -->
-  <script src="/legal/consent.js?v=1" defer></script>
+  <script src="/legal/consent.js?v=2" defer></script>
 </body>
 </html>

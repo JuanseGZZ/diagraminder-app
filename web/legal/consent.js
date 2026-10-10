@@ -1,46 +1,79 @@
-// ===================== AVISO DE ESTADÍSTICAS (2026-10-08) =====================
-// Cuántas personas REALES entran a diagraminder.com, con Cloudflare Web Analytics, y
-// SOLO si la persona acepta. Archivo suelto a propósito (no va en el bundle): lo cargan
-// la app (index.html) y la doc (/docs), y así no pasa por el ofuscador ni por el orden
-// de inicialización de event.js. Vive en `legal/` porque el backend local solo sirve
-// raíces de una lista blanca (WEB_ROOTS) y `legal/` ya está: en la raíz daba 404 en el
-// desktop, donde igual no hace nada.
+// ===================== AVISO DE ESTADÍSTICAS =====================
+// Cuántas personas REALES entran a diagraminder.com y qué usan, con Google Analytics 4
+// (desde el 2026-10-09; antes Cloudflare Web Analytics), y SOLO si la persona acepta.
+// Archivo suelto a propósito (no va en el bundle): lo cargan la app (index.html) y la
+// doc (/docs), y así no pasa por el ofuscador ni por el orden de inicialización de
+// event.js. Vive en `legal/` porque el backend local solo sirve raíces de una lista
+// blanca (WEB_ROOTS) y `legal/` ya está: en la raíz daba 404 en el desktop.
 //
 // - Solo en el sitio público. En el desktop (la app servida por el backend local) y en
-//   localhost no aparece nunca: ahí no hay nada que medir y no es nuestro servidor.
-// - Aceptar carga el beacon; ese primer request ES el «fetch de aceptación». Después el
-//   beacon reporta solo (y con `spa` sigue los cambios de ruta). No usa cookies.
-// - Si Cloudflare ya lo inyectó por su cuenta (la «configuración automática» del panel
-//   sigue prendida), NO se carga otro: contaría doble. Para que el consentimiento valga
-//   de verdad, esa inyección automática se apaga en el panel de Cloudflare.
-// - La elección se recuerda (localStorage `dmConsent`: "yes" | "no").
+//   localhost no aparece nunca: ahí no hay nada que medir y no es nuestro sitio.
+// - gtag.js se pide RECIÉN al aceptar: antes no sale nada a Google. Va con Consent
+//   Mode v2: medición sí, publicidad no (ad_storage / ad_user_data / ad_personalization
+//   en denied).
+// - La elección se recuerda (localStorage `dmConsent`). El «sí» viejo ("yes") era para
+//   Cloudflare, que no usaba cookies; GA sí las usa, así que a esa persona se le vuelve
+//   a preguntar. El «no» se respeta: no se le pregunta de nuevo.
+// - `window.dmTrack(nombre, params)`: eventos propios. No hace nada si no se aceptó.
+//   Los de acá (descargas, exports, backend conectado) se escuchan sin tocar el bundle;
+//   el bundle solo manda `create_diagram`.
 (function () {
   "use strict";
   var HOSTS = ["diagraminder.com", "www.diagraminder.com"];
-  var TOKEN = "ebda25d74e664b518c87dcca374a4662";   // el del sitio en Cloudflare: es público
-  var BEACON = "https://static.cloudflareinsights.com/beacon.min.js";
+  var GA_ID = "G-Z5EXZSQFXR";   // el ID de medición es público (va en el HTML de cualquier sitio)
   var KEY = "dmConsent";
+  var SI = "ga";                // valor guardado al aceptar GA
 
+  window.dmTrack = function () {};   // no-op hasta que acepten (y para siempre si no)
   if (window.__DM_DESKTOP__ || HOSTS.indexOf(location.hostname) < 0) return;
 
   function get() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
   function set(v) { try { localStorage.setItem(KEY, v); } catch (e) {} }
 
-  function beaconYaEsta() {
-    var s = document.querySelectorAll("script[src]");
-    for (var i = 0; i < s.length; i++) if (s[i].src.indexOf("cloudflareinsights.com") >= 0) return true;
-    return false;
-  }
-  function cargarBeacon() {
-    if (beaconYaEsta()) return;
+  var cargado = false;
+  function cargarGA() {
+    if (cargado) return;
+    cargado = true;
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = function () { window.dataLayer.push(arguments); };
+    window.gtag("consent", "default", {
+      analytics_storage: "granted", ad_storage: "denied",
+      ad_user_data: "denied", ad_personalization: "denied",
+    });
+    window.gtag("js", new Date());
+    window.gtag("config", GA_ID);
     var sc = document.createElement("script");
-    sc.defer = true;
-    sc.src = BEACON;
-    sc.setAttribute("data-cf-beacon", JSON.stringify({ token: TOKEN, spa: true }));
+    sc.async = true;
+    sc.src = "https://www.googletagmanager.com/gtag/js?id=" + GA_ID;
     document.head.appendChild(sc);
+    window.dmTrack = function (nombre, params) { window.gtag("event", nombre, params || {}); };
+    escucharEventos();
   }
 
-  if (get() === "yes") { cargarBeacon(); return; }
+  // Lo que se mide además de las páginas, sin tocar el bundle.
+  var EXPORTS = { "export-png": "png", "export-pdf": "pdf", "export-word": "word",
+                  "export-obsidian": "obsidian", "export-dmer": "dmer" };
+  function escucharEventos() {
+    document.addEventListener("click", function (ev) {
+      var el = ev.target && ev.target.closest ? ev.target.closest("a, button") : null;
+      if (!el) return;
+      var href = el.getAttribute("href") || "";
+      if (href.indexOf("/releases/") >= 0) {
+        // DiagraMinder-win.exe, DiagraMinder-Backend-mac, …: el archivo dice qué y para qué SO
+        window.dmTrack("download", { file: href.split("/").pop() });
+      } else if (EXPORTS[el.id]) {
+        window.dmTrack("export", { format: EXPORTS[el.id] });
+      }
+    }, true);
+    var conectado = false;
+    document.addEventListener("local-backend-connected", function () {
+      if (conectado) return;          // una vez por visita: reconectar no es otro usuario
+      conectado = true;
+      window.dmTrack("backend_connected");
+    });
+  }
+
+  if (get() === SI) { cargarGA(); return; }
   if (get() === "no") return;
 
   // Mismo idioma que la app y la doc (comparten la clave `ui-lang`).
@@ -48,10 +81,10 @@
   try { es = (localStorage.getItem("ui-lang") || navigator.language || "en").toLowerCase().indexOf("es") === 0; }
   catch (e) { es = false; }
   var TXT = es ? {
-    msg: "Contamos cuántas personas entran al sitio con Cloudflare Web Analytics: sin cookies y sin datos personales. ¿Nos dejás?",
+    msg: "Usamos Google Analytics para saber cuántas personas entran y qué partes usan. Guarda cookies de medición, sin publicidad. ¿Nos dejás?",
     yes: "Aceptar", no: "No, gracias", more: "Privacidad"
   } : {
-    msg: "We count how many people visit this site with Cloudflare Web Analytics: no cookies, no personal data. Is that OK?",
+    msg: "We use Google Analytics to know how many people visit and which parts they use. It sets measurement cookies, no advertising. Is that OK?",
     yes: "Accept", no: "No thanks", more: "Privacy"
   };
 
@@ -96,7 +129,7 @@
     box.setAttribute("translate", "no");
     document.body.appendChild(box);
 
-    yes.addEventListener("click", function () { set("yes"); box.remove(); cargarBeacon(); });
+    yes.addEventListener("click", function () { set(SI); box.remove(); cargarGA(); });
     no.addEventListener("click", function () { set("no"); box.remove(); });
   }
 

@@ -45,7 +45,7 @@ MCP_FS_EXEC = ["fs_exec"]
 CLI_DIAGRAM_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
 # el shell de Claude Code son DOS tools según el sistema: `Bash` (POSIX) y `PowerShell`
 # (Windows). Nombrar solo Bash dejaba el shell abierto en Windows — y al revés, la
-# pre-aprobación del permiso `ejecutar` tiene que cubrir las dos.
+# pre-aprobación del agente no confinado tiene que cubrir las dos.
 CLI_SHELL_TOOLS = ["Bash", "PowerShell"]
 CLI_DISALLOWED = ["WebFetch", "WebSearch"]
 
@@ -124,12 +124,34 @@ class ClaudeOrch:
             cmd += ["--add-dir", x]
 
         cfg = None
+        # los repos de GitHub (doc 28 §GitHub): un MCP `dmgh<id>` por nodo, confinado o no.
+        # Habla con /gh/call de este backend con el token LOCAL; el de GitHub no sale de ahí.
+        gh_servers, gh_allowed = {}, []
+        for name, info in (s["mcp"] or {}).items():
+            if info.get("kind") != "gh":
+                continue
+            gh_servers[name] = {
+                **_self_cmd("--mcp-gh"),
+                "env": {"DMGH_URL": s["mcp_env"]["url"], "DMGH_TOKEN": s["mcp_env"]["token"],
+                        "DMGH_PROJECT": s.get("project_id") or "", "DMGH_NODE": str(info["nodeId"])},
+            }
+            gh_allowed += [f"mcp__{name}__{t}" for t in info["tools"]]
+
+        def _write_cfg(servers):
+            fd, path = tempfile.mkstemp(prefix=f"dmorch-mcp-{s['node_id']}-", suffix=".json")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump({"mcpServers": servers}, f)
+            os.chmod(path, 0o600)         # tiene el token del backend local
+            return path
+
         if s["confinado"]:
             # whitelist: SOLO las tools del MCP (una por editor, según permiso) y, si tiene
             # diagramas cableados —o es un director, que alcanza su organigrama—, las nativas
             # de archivo, que solo llegan a sus add_dirs.
-            servers, allowed = {}, []
+            servers, allowed = dict(gh_servers), list(gh_allowed)
             for name, info in (s["mcp"] or {}).items():
+                if info.get("kind") == "gh":
+                    continue
                 servers[name] = {
                     **_self_cmd(),
                     "env": {"DMFS_URL": s["mcp_env"]["url"], "DMFS_TOKEN": s["mcp_env"]["token"],
@@ -144,10 +166,7 @@ class ClaudeOrch:
             if s["add_dirs"]:
                 allowed += CLI_DIAGRAM_TOOLS
             if servers:
-                fd, cfg = tempfile.mkstemp(prefix=f"dmorch-mcp-{s['node_id']}-", suffix=".json")
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    json.dump({"mcpServers": servers}, f)
-                os.chmod(cfg, 0o600)      # tiene el token del backend local
+                cfg = _write_cfg(servers)
                 cmd += ["--mcp-config", cfg]
             # sin tools permitidas el agente no puede hacer NADA con archivos: igual puede
             # razonar y responder, que es lo correcto para un nodo sin recursos cableados.
@@ -157,18 +176,19 @@ class ClaudeOrch:
             # shell nativo a mano. Se lo negamos explícitamente — su shell es `fs_exec`.
             cmd += ["--disallowedTools"] + CLI_DISALLOWED + CLI_SHELL_TOOLS
         else:
-            # blacklist: conserva su toolbelt nativo, acotado por los --add-dir de arriba.
-            # El shell es la vía de escape de los --add-dir, así que se lo damos SOLO si algún
-            # recurso suyo tiene permiso `ejecutar` — y son DOS tools (Bash y PowerShell:
-            # nombrar solo Bash dejaba el shell abierto en Windows).
-            off = list(CLI_DISALLOWED) + ([] if s["exec_ok"] else list(CLI_SHELL_TOOLS))
-            cmd += ["--disallowedTools"] + off
-            if s["exec_ok"]:
-                # tener la tool no alcanza: `acceptEdits` auto-aprueba las EDICIONES, no los
-                # comandos, así que headless cada comando que no sea de solo-lectura se
-                # auto-DENIEGA (un tester no podía ni levantar su server). El permiso
-                # `ejecutar` es justamente "puede correr comandos" ⇒ se pre-aprueban.
-                cmd += ["--allowedTools", ",".join(CLI_SHELL_TOOLS)]
+            # blacklist: conserva su toolbelt nativo ENTERO, shell incluido, acotado por los
+            # --add-dir de arriba. Hasta 2026-10-08 el shell iba atado a que algún recurso
+            # tuviera permiso `ejecutar`, y en la práctica un agente no confinado quedaba
+            # sin Bash y no podía ni correr un test. Decisión del usuario: el interruptor de
+            # seguridad es `confinado` — quien no lo está, tiene shell. Son DOS tools (Bash y
+            # PowerShell: nombrar solo Bash dejaba el shell afuera en Windows), y hay que
+            # PRE-APROBARLAS: `acceptEdits` auto-aprueba las ediciones, no los comandos, así
+            # que headless cada comando se auto-denegaría.
+            cmd += ["--disallowedTools"] + list(CLI_DISALLOWED)
+            cmd += ["--allowedTools", ",".join(CLI_SHELL_TOOLS + gh_allowed)]
+            if gh_servers:
+                cfg = _write_cfg(gh_servers)
+                cmd += ["--mcp-config", cfg]
         if s.get("session"):
             cmd += [self.resume_flag, str(s["session"])]
         return cmd, cfg
@@ -191,8 +211,8 @@ class ClaudeOrch:
                 hit = denied_text(b)
                 if hit:
                     why, txt = hit
-                    head = ("cli COMMAND denied (headless: no dialog to approve; a command needs a "
-                            "resource with the «ejecutar» permission)" if why == "cmd" else
+                    head = ("cli COMMAND denied (headless: no dialog to approve; a confined agent "
+                            "runs commands only through fs_exec)" if why == "cmd" else
                             "cli permission DENIED (headless: nobody can approve it — the path is "
                             "outside its --add-dir)")
                     log(f"{head}: {txt[:200]}", full=txt)
@@ -250,11 +270,8 @@ class AgyOrch:
                "--disable-slash-commands"]       # el prompt es del usuario: que un "/" no expanda nada
         for x in s["add_dirs"]:
             cmd += ["--add-dir", x]
-        # No se le puede quitar el shell (no hay --disallowedTools). `--sandbox` es lo más
-        # parecido que ofrece el binario: restringe la terminal. Se usa cuando NINGÚN
-        # recurso tiene permiso `ejecutar`, que es el caso en que a Claude se le saca Bash.
-        if not s["exec_ok"]:
-            cmd += ["--sandbox"]
+        # Sin `--sandbox`: agy nunca corre confinado (no tiene con qué), y un agente no
+        # confinado tiene shell — lo mismo que Claude Code (ver ClaudeOrch.build).
         if s.get("session"):
             cmd += [self.resume_flag, str(s["session"])]
         return cmd, None
