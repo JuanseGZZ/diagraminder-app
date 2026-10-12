@@ -1,18 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120"
      role="img" aria-label="DiagraMinder">
-  <!-- Logo de DiagraMinder. El glifo es un árbol LTR (raíz a la izquierda, hijos a la
-       derecha): el layout insignia de la app. El azul es el token de acento de
-       styles.css. Fuente única: de acá salen los PNG de brand/.
+  <!-- Logo de DiagraMinder, direccion "Evolution" (2026-10-12). La raiz es una
+       TARJETA (un nodo de la app), las ramas van en codo como el organigrama, y un
+       hijo es una chispa naranja: el agente. Cuenta la tesis, vos y tu agente en el
+       mismo canvas. El logo anterior (tres circulos) se leia como el icono generico
+       de "compartir" de iOS/Android. El azul es el token de acento de styles.css; el
+       naranja es solo del agente (ver branding/). Fuente unica: de aca salen los PNG
+       de brand/ y de branding/.
        OJO: un comentario XML no puede contener dos guiones seguidos. Si se escriben
-       (p. ej. nombrando la variable CSS del acento), el SVG deja de ser XML válido y
+       (p. ej. nombrando la variable CSS del acento), el SVG deja de ser XML valido y
        el navegador NO lo dibuja como archivo suelto: favicon roto y logo roto en la
-       página legal, sin ningún error visible en consola. -->
+       pagina legal, sin ningun error visible en consola. -->
   <rect width="120" height="120" rx="27" fill="#3f6bc9"/>
-  <g fill="none" stroke="#ffffff" stroke-width="5.5" stroke-linecap="round">
-    <path d="M40 60 C 57 60, 60 37, 76 37"/>
-    <path d="M40 60 C 57 60, 60 83, 76 83"/>
+  <rect x="20" y="49" width="26" height="22" rx="6" fill="#ffffff"/>
+  <g fill="none" stroke="#ffffff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M46 60 H58 V36 H72"/>
+    <path d="M58 60 V84 H70"/>
   </g>
-  <circle cx="34" cy="60" r="11" fill="#ffffff"/>
-  <circle cx="83" cy="37" r="9"  fill="#ffffff"/>
-  <circle cx="83" cy="83" r="9"  fill="#ffffff"/>
+  <circle cx="83" cy="36" r="10" fill="#ffffff"/>
+  <path d="M83 71 Q85.5 81.5 96 84 Q85.5 86.5 83 97 Q80.5 86.5 70 84 Q80.5 81.5 83 71Z" fill="#ffb27a"/>
 </svg>

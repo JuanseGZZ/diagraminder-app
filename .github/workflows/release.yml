@@ -23,11 +23,13 @@ jobs:
           #        ("choca con la seguridad de macOS", error a partir de su v7), y un
           #        ejecutable pelado, al doble-clickearlo, abre Terminal.
           # `linux`: un binario suelto no abre terminal al lanzarlo desde el escritorio.
+          # `icon`: el ícono del ejecutable. Sale de `brand/` del repo privado (lo copia
+          #        release.sh a web/brand/). Linux no tiene ícono en un ELF suelto.
           # El MCP no se rompe sin consola: hay stdio igual cuando el padre da pipes,
           # que es como lo lanza Claude Code.
-          - { os: windows-latest, name: win,   ext: ".exe", sep: ";", modo: "--onefile", win: "--noconsole" }
-          - { os: macos-latest,   name: mac,   ext: ".zip", sep: ":", modo: "--onedir",  win: "--windowed" }
-          - { os: ubuntu-latest,  name: linux, ext: "",     sep: ":", modo: "--onefile", win: "" }
+          - { os: windows-latest, name: win,   ext: ".exe", sep: ";", modo: "--onefile", win: "--noconsole", icon: "--icon web/brand/app-icon.ico" }
+          - { os: macos-latest,   name: mac,   ext: ".zip", sep: ":", modo: "--onedir",  win: "--windowed",  icon: "--icon web/brand/app-icon.icns" }
+          - { os: ubuntu-latest,  name: linux, ext: "",     sep: ":", modo: "--onefile", win: "",            icon: "" }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +45,7 @@ jobs:
       # (ver web_dir() en backend/server.py).
       - name: Compilar
         run: >
-          pyinstaller ${{ matrix.modo }} ${{ matrix.win }} --noconfirm --name DiagraMinder-${{ matrix.name }}
+          pyinstaller ${{ matrix.modo }} ${{ matrix.win }} ${{ matrix.icon }} --noconfirm --name DiagraMinder-${{ matrix.name }}
           --add-data "web${{ matrix.sep }}web"
           --hidden-import certifi --collect-data certifi
           backend/server.py
@@ -68,6 +70,15 @@ jobs:
             [ "$code" = "200" ] || { echo "✖ $p devolvió $code"; exit 1; }
           done
           echo "ok: los estáticos resuelven"
+          # el ícono: sin --icon PyInstaller pone el suyo y nadie se entera
+          if [ -d "./dist/DiagraMinder-mac.app" ]; then
+            ok=0
+            for f in ./dist/DiagraMinder-mac.app/Contents/Resources/*.icns; do
+              cmp -s "$f" web/brand/app-icon.icns && ok=1
+            done
+            [ "$ok" = 1 ] || { echo "✖ el .app no trae app-icon.icns"; ls ./dist/DiagraMinder-mac.app/Contents/Resources/; exit 1; }
+            echo "ok: el .app trae el ícono de la marca"
+          fi
 
       # El .app es un DIRECTORIO: no se puede publicar como asset suelto, va comprimido.
       # `ditto` y no `zip` porque preserva los metadatos del bundle en macOS.
