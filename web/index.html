@@ -21,7 +21,7 @@
   <!-- ?v= rompe el cache del borde cuando cambia el CSS. El nginx de infra/web ya
        manda no-cache, pero una copia vieja YA cacheada sobrevive hasta su TTL: subir
        este número la invalida al instante (index.html se sirve siempre fresco). -->
-  <link rel="stylesheet" href="app/bolzaDeEstilos/styles.css?v=99">
+  <link rel="stylesheet" href="app/bolzaDeEstilos/styles.css?v=100">
 </head>
 
 <body>
@@ -321,6 +321,31 @@
             <input class="ia-apis-input ia-apis-other-only hidden" id="ia-api-url" type="text" placeholder="Endpoint URL (OpenAI-compatible)" autocomplete="off" />
             <input class="ia-apis-input ia-apis-other-only hidden" id="ia-api-model" type="text" placeholder="Model (e.g. gpt-4o-mini, llama-3.1…)" autocomplete="off" />
             <div class="sp-actions"><button class="ia-apis-add side-panel-btn is-primary" type="submit">Add API</button></div>
+          </form>
+        </div>
+      </section>
+
+      <!-- Tokens de servicios, globales (tokens.js). Las carpetas asociadas a un repo
+           de GitHub eligen uno de acá en vez de guardar el suyo (doc 41). -->
+      <section class="side-panel-group" id="tokens-section">
+        <header class="sp-group-head">
+          <h3 class="side-panel-group-title">Tokens</h3>
+          <p class="sp-group-desc">Service tokens your folders can use, like GitHub. Stored in this browser.</p>
+        </header>
+        <div class="sp-row">
+          <div class="sp-row-label"><b>Tokens</b><span class="sp-row-sub" id="tokens-count">None yet</span></div>
+          <div class="sp-row-ctl"><button class="side-panel-btn" id="tokens-manage">Add token</button></div>
+        </div>
+        <div class="ia-apis hidden" id="tokens-panel">
+          <ul class="ia-apis-list" id="tokens-list"></ul>
+          <form class="ia-apis-form" id="tokens-form">
+            <input class="ia-apis-input" id="token-name" type="text" placeholder="Name (e.g. My GitHub)" required />
+            <select class="ia-apis-input" id="token-service">
+              <option value="github">GitHub</option>
+              <option value="other">Other</option>
+            </select>
+            <input class="ia-apis-input" id="token-value" type="password" placeholder="Token" autocomplete="off" required />
+            <div class="sp-actions"><button class="side-panel-btn is-primary" type="submit">Add token</button></div>
           </form>
         </div>
       </section>
@@ -1773,7 +1798,7 @@
   <!-- ?v= igual que en el CSS: mientras el zone setting "Browser Cache TTL" de
        Cloudflare pise el no-cache del origen, subir este número es lo único que
        invalida el bundle YA cacheado en los navegadores. -->
-  <script type="module" src="./dist/bundle.js?v=99"></script>
+  <script type="module" src="./dist/bundle.js?v=100"></script>
   <!-- el aviso de estadísticas: solo en diagraminder.com, y el beacon solo si se acepta -->
   <script src="/legal/consent.js?v=2" defer></script>
 </body>

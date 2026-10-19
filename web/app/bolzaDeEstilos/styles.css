@@ -10615,3 +10615,11 @@ body.dm-tour-open { overflow: hidden; }
 }
 .gh-version-restore:hover { border-color: var(--accent); color: var(--accent); }
 .gh-version-restore:disabled { opacity: .6; cursor: default; }
+/* el token de la carpeta se ELIGE de Settings → Tokens (tokens.js) */
+.gh-token-row { display: flex; gap: var(--space-2); align-items: center; }
+.gh-token-row select { flex: 1; min-width: 0; }
+.gh-tokens-link {
+  flex: 0 0 auto; height: 36px; padding: 0 12px; border-radius: var(--radius-md); cursor: pointer;
+  background: transparent; border: 1px solid var(--border-strong); color: var(--text-secondary); font: 500 12.5px/1 var(--font-ui);
+}
+.gh-tokens-link:hover { border-color: var(--accent); color: var(--accent); }
