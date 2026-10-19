@@ -21,7 +21,7 @@
   <!-- ?v= rompe el cache del borde cuando cambia el CSS. El nginx de infra/web ya
        manda no-cache, pero una copia vieja YA cacheada sobrevive hasta su TTL: subir
        este número la invalida al instante (index.html se sirve siempre fresco). -->
-  <link rel="stylesheet" href="app/bolzaDeEstilos/styles.css?v=98">
+  <link rel="stylesheet" href="app/bolzaDeEstilos/styles.css?v=99">
 </head>
 
 <body>
@@ -96,6 +96,21 @@
               <li><button data-act="fit">Fit to screen</button></li>
               <li class="sep"></li>
               <li><button data-act="toggle-dots" id="toggle-dots">Hide dots</button></li>
+            </ul>
+          </details>
+        </li>
+
+        <!-- Solo si la carpeta del file abierto está asociada a un repo de GitHub (⋮ de
+             la carpeta → «GitHub repo…»). Lo prende githubSyncUI.js; por ser
+             .nav-project se colapsa en el Home como File/Edit/View. -->
+        <li class="nav-item nav-project nav-git hidden" id="git-menu-li">
+          <details id="git-menu">
+            <summary>GitHub</summary>
+            <ul class="menu">
+              <li><button id="gh-push">Save &amp; push</button></li>
+              <li><button id="gh-restore">Restore…</button></li>
+              <li class="sep"></li>
+              <li><button id="gh-settings">Repository settings…</button></li>
             </ul>
           </details>
         </li>
@@ -1758,7 +1773,7 @@
   <!-- ?v= igual que en el CSS: mientras el zone setting "Browser Cache TTL" de
        Cloudflare pise el no-cache del origen, subir este número es lo único que
        invalida el bundle YA cacheado en los navegadores. -->
-  <script type="module" src="./dist/bundle.js?v=98"></script>
+  <script type="module" src="./dist/bundle.js?v=99"></script>
   <!-- el aviso de estadísticas: solo en diagraminder.com, y el beacon solo si se acepta -->
   <script src="/legal/consent.js?v=2" defer></script>
 </body>
