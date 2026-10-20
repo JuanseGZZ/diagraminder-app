@@ -58,7 +58,7 @@ TOOLS = [
             "chart: the project's documentation), freestyle (a free canvas: associative "
             "memory), activities (an ordered to-do), object (data model / UML), "
             "orchestrator (a team of AI agents), treeQuestionary, documents, codemap (a "
-            "scanned map of a JavaScript/TypeScript code base — query it with the code_* tools, never "
+            "scanned map of a JavaScript/TypeScript/Python/Java code base — query it with the code_* tools, never "
             "read it whole)."
         ),
         "inputSchema": _schema({}, []),
@@ -244,7 +244,7 @@ CODE_TOOLS = [
     {
         "name": "code_map_scan",
         "description": (
-            "Scans a JavaScript or TypeScript (also JSX/TSX) project folder and saves its code map (files, imports, "
+            "Scans a JavaScript, TypeScript (also JSX/TSX), Python or Java project folder and saves its code map (files, imports, "
             "functions, who calls whom, event listeners), which also shows up in the user's "
             "app. Rescanning the same folder UPDATES its map: call it again after you edit "
             "code, so the map doesn't lie to you or to the next agent. `path` is relative to "
@@ -647,8 +647,10 @@ def _escanear(args):
         buenos = sorted([c for c in cands if c[1] >= 0.5], key=lambda c: -c[1])
         if len(buenos) == 1 or (len(buenos) > 1 and buenos[0][1] > buenos[1][1]):
             previo = [buenos[0][0]]
+    unsup = (obj.get("scan") or {}).get("unsupported") or {}
     resumen = (f"{(obj.get('scan') or {}).get('files')} files, {len(obj['graph']['fns'])} functions/events, "
-               f"{len(obj['graph']['calls'])} call edges")
+               f"{len(obj['graph']['calls'])} call edges" +
+               (f"; NOT in the map (language not analyzed yet): " + ", ".join(f"{n} .{e}" for e, n in sorted(unsup.items())) if unsup else ""))
     if previo:
         carpeta, nombre_real, _ = previo[0]
         res2, err = _api("/state/write", {"folder": carpeta, "name": nombre_real, "treeJson": texto, "origin": "mcp"})
