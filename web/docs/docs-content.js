@@ -404,6 +404,7 @@ const DOCS = [
   <tr><td><b>code_who_calls</b> / <b>code_calls</b></td><td>Who calls a function, or what it calls, as many levels as asked.</td></tr>
   <tr><td><b>code_impact</b></td><td>What depends on a function or a file: its callers, the user actions that reach it, who imports it, whether it is in an import cycle.</td></tr>
   <tr><td><b>code_quality</b></td><td>The quality findings, most serious first, and the hotspot files — to pick what to refactor.</td></tr>
+  <tr><td><b>code_diff_impact</b></td><td>What a change touches: from a diff (or your uncommitted changes, with the files level), the changed functions, their callers and the user actions that reach them — what to test.</td></tr>
 </table>
 <p>The chat and the orchestrator's agents get the same tools. It is static analysis: calls made dynamically are not seen, and the answers say so.</p>
 <h2>Why it cannot break your work</h2>
@@ -463,6 +464,7 @@ const DOCS = [
   <tr><td><b>code_who_calls</b> / <b>code_calls</b></td><td>Quién llama a una función, o a qué llama, tantos niveles como se pida.</td></tr>
   <tr><td><b>code_impact</b></td><td>Qué depende de una función o de un archivo: quién la llama, qué acciones del usuario llegan ahí, quién lo importa, si está en un ciclo de imports.</td></tr>
   <tr><td><b>code_quality</b></td><td>Los hallazgos de calidad, lo más serio primero, y los archivos calientes — para elegir qué refactorizar.</td></tr>
+  <tr><td><b>code_diff_impact</b></td><td>Qué toca un cambio: a partir de un diff (o de tus cambios sin commitear, con el nivel de archivos), las funciones cambiadas, quién las llama y las acciones del usuario que llegan ahí — qué probar.</td></tr>
 </table>
 <p>El chat y los agentes del orquestador tienen las mismas herramientas. Es análisis estático: las llamadas dinámicas no se ven, y las respuestas lo dicen.</p>
 <h2>Por qué no te puede romper el trabajo</h2>

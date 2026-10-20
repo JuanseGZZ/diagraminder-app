@@ -35,7 +35,8 @@ _JS = re.compile(r"\.(m?js|cjs)$", re.I)
 _MIN = re.compile(r"\.min\.js$", re.I)
 
 KINDS = ["function", "method", "event", "module", "class"]
-HOW = {"import": "via import", "local": "same scope", "this": "this.", "name": "BY NAME (less certain)"}
+HOW = {"import": "via import", "local": "same scope", "this": "this.", "name": "BY NAME (less certain)",
+       "fires": "FIRES it from code (el.click() / dispatchEvent)"}
 
 
 class CodeMapError(Exception):
@@ -185,6 +186,11 @@ class Graph:
         for i, f in enumerate(self.fns):
             if f["kind"] == "event" and f.get("parent") is not None:
                 self.registers.setdefault(f["parent"], []).append(i)
+                # «Quién registra un listener» NO se recorre como si lo llamara: se probó
+                # (bench t6) y lo que redibuja una barra pasaba por «llegar» a lo que hace su
+                # botón. Registrar es una condición previa, no la acción. Los casos en que
+                # quien registra también DISPARA (`input.click()` del selector de archivo) los
+                # conecta el analizador con un borde «fires».
         self.root = (tree.get("scan") or {}).get("root") or g.get("root") or ""
 
     # --- nombres ---
@@ -335,8 +341,10 @@ def overview(g, fresh_text, max_files=60):
     top = sorted(imported, key=lambda k: -len(imported[k]))[:10]
     lines.append("Most imported files: " + "; ".join(f"{g.files[k]} ({len(imported[k])})" for k in top))
     if g.cycles:
-        lines.append(f"Import cycles: {len(g.cycles)} — " + " | ".join(
-            f"{len(c)} files incl. {', '.join(g.files[x] for x in c[:4])}{'…' if len(c) > 4 else ''}" for c in g.cycles[:3]))
+        # la lista ENTERA: «14 files incl. a, b, c, d…» hacía que el agente reconstruyera el
+        # ciclo con 41 greps (bench, 2026-10-20)
+        lines.append(f"Import cycles (static imports; each is a strongly connected component): {len(g.cycles)}")
+        lines += [f"  {len(c)} files: {_cycle_files(g, c)}" for c in g.cycles[:5]]
     lines += ["", "Next: code_find to locate something, code_impact before editing it, "
                   "code_who_calls / code_calls to follow a chain."]
     return "\n".join(lines)
@@ -395,13 +403,46 @@ def find(g, fresh_text, query="", kind="", file="", limit=40):
     return "\n".join(out)
 
 
+def _call_lines(c):
+    """Las líneas de una llamada: TODAS si se repite (c[5], desde 2026-10-20), si no la única.
+    «call at 1801 ×2» sin la otra línea mandaba al agente a grepear (bench/codemap_agent.py)."""
+    return c[5] if len(c) > 5 and isinstance(c[5], list) and c[5] else [c[3]]
+
+
+def _cycle_files(g, c, cap=40):
+    return ", ".join(g.files[x] for x in c[:cap]) + (f" … (+{len(c) - cap})" if len(c) > cap else "")
+
+
+def _no_callers(g, i):
+    """Qué se puede afirmar de algo sin callers. Una función común (no método) que NO se
+    exporta: el analizador cuenta como uso llamarla Y nombrarla como valor (`{k: fn}`,
+    `[fn]`, `return fn`, `x.cb = fn`, pasarla de argumento), así que no hay camino estático
+    a ella. Decirlo con esas letras importa: el «NOT necessarily dead» a secas hacía que el
+    agente lo verificara todo con grep y pagara la consulta dos veces (bench, 2026-10-20)."""
+    f = g.fns[i]
+    # `tree.render = function…` también es kind «function», pero se llama por despacho
+    # (`x.render()`): con punto en el nombre vale lo de un método. Medido en app/: sin esta
+    # distinción, 13 funciones vivas salían «unused»; con ella quedan las 4 muertas de verdad.
+    if f["kind"] == "function" and "." not in f["name"] and i not in g.exported:
+        return ("no callers and no references: it is not exported, and nothing in the project calls it "
+                "or uses it as a value (passing it as an argument, `{k: fn}`, `[fn]`, `return fn` and "
+                "`x.cb = fn` all count). Only string-based access could still reach it — `window[name]`, "
+                "eval, an `onclick=\"…\"` attribute in HTML. Unless the code does that, it is unused.")
+    if f["kind"] == "method" or "." in f["name"]:
+        return ("no callers resolved — but this is a METHOD (or a function stored in a property): calls like `obj." + f["name"].split(".")[-1] +
+                "()` are matched only when the method name is unique in the project, so dynamic dispatch "
+                "(polymorphism) is not seen. Grep the method name before concluding it is unused.")
+    return ("no callers in the project — it is EXPORTED, so code outside this map (another package, "
+            "tests, HTML) may call it.")
+
+
 def _chain(g, start, forward, depth):
     order, truncated = g.walk_dir(start, forward, depth)
     lines = []
     for d, u, v, c in order:
         how = HOW.get(c[2], c[2])
         n = f" ×{c[4]}" if len(c) > 4 and c[4] and c[4] > 1 else ""
-        call_at = f"{g.files[g.fns[c[0]]['file']]}:{c[3]}"
+        call_at = f"{g.files[g.fns[c[0]]['file']]}:{', '.join(str(x) for x in _call_lines(c))}"
         lines.append(f"{'  ' * d}{'→' if forward else '←'} {g.row(v)}   (call at {call_at}, {how}{n})")
     return lines, truncated
 
@@ -413,12 +454,13 @@ def who_calls(g, fresh_text, symbol, depth=2):
     out = [_header(g, fresh_text), "", f"Who calls {g.row(i)} (up to {depth} levels):"]
     if f["kind"] == "event":
         p = f.get("parent")
-        out.append("  Nobody calls an event listener: the BROWSER fires it" +
-                   (f". It is registered in {g.row(p)}." if p is not None else "."))
-        return "\n".join(out)
+        out.append("  The BROWSER fires an event listener" +
+                   (f"; it is registered in {g.row(p)}." if p is not None else "."))
+        if not g.inc[i]:
+            return "\n".join(out)
+        out.append("  It is ALSO fired from code (el.click() / dispatchEvent) — those chains:")
     lines, truncated = _chain(g, i, False, depth)
-    out += lines or ["  (no callers visible in the code — it may be called dynamically, from outside "
-                     "the project, or passed as a callback; it is NOT necessarily dead)"]
+    out += lines or ["  (" + _no_callers(g, i) + ")"]
     if truncated:
         out.append("  … truncated: lower `depth`.")
     if any(c[2] == "name" for _, _, _, c in g.walk_dir(i, False, depth)[0]):
@@ -479,7 +521,12 @@ def impact(g, fresh_text, target):
         if fi in g.file_err:
             out.append(f"  ⚠ it did not parse ({(g.file_err[fi] or {}).get('message')}): its code is not in the map.")
         importers = sorted({e[0] for e in g.imports if e[1] == fi})
-        out.append(f"- Imported by {len(importers)} file(s): " + (", ".join(g.files[x] for x in importers[:25]) or "none"))
+        # cuál es dinámico: sin la marca, el agente grepeaba `import(` para comprobarlo
+        dyn = {e[0] for e in g.imports if e[1] == fi and len(e) > 3 and e[3]}
+        stat = {e[0] for e in g.imports if e[1] == fi and not (len(e) > 3 and e[3])}
+        names = [g.files[x] + (" (dynamic import() only)" if x in dyn and x not in stat else "") for x in importers]
+        out.append(f"- Imported by {len(importers)} file(s) — the complete list, static and dynamic: " +
+                   (", ".join(names[:60]) or "none") + (f" … (+{len(names) - 60})" if len(names) > 60 else ""))
         # quién usa qué, de afuera
         mine = [i for i, f in enumerate(g.fns) if f["file"] == fi]
         used_out = []
@@ -503,7 +550,8 @@ def impact(g, fresh_text, target):
                        "; ".join(g.row(e) for e in sorted(reach)[:15]) + (" …" if len(reach) > 15 else ""))
         cyc = [c for c in g.cycles if fi in c]
         if cyc:
-            out.append(f"- ⚠ It is in an import CYCLE of {len(cyc[0])} files: adding an import here can make it worse "
+            out.append(f"- ⚠ It is in an import CYCLE of {len(cyc[0])} files (static imports; the strongly connected "
+                       f"component): {_cycle_files(g, cyc[0])}. Adding an import here can make it worse "
                        "(in a bundle, a cycle used during load fails with 'Cannot access X before initialization').")
         return "\n".join(out)
 
@@ -515,8 +563,10 @@ def impact(g, fresh_text, target):
                    f"parameters, cyclomatic complexity {g.cx[i]}.")
     if f["kind"] == "event":
         p = f.get("parent")
-        out.append("- It is an event listener: the browser fires it; nothing in the code calls it." +
-                   (f" Registered in {g.row(p)}." if p is not None else ""))
+        fired = sorted({c[0] for c in g.inc[i]})
+        out.append("- It is an event listener: the browser fires it" +
+                   (f"; the code also fires it from: {', '.join(g.row(x) for x in fired[:10])}" if fired else "; nothing in the code fires it") +
+                   "." + (f" Registered in {g.row(p)}." if p is not None else ""))
         lines, _ = _chain(g, i, True, 2)
         out.append("- What it runs (2 levels):")
         out += ["  " + x for x in lines[:30]] or ["    (nothing in the project)"]
@@ -527,7 +577,8 @@ def impact(g, fresh_text, target):
     out.append(f"- Direct callers: {len(direct)}" + (f" (from {len(other_files)} other file(s): {', '.join(other_files[:10])})" if other_files else ""))
     for x in direct[:25]:
         cs = [c for c in g.inc[i] if c[0] == x]
-        out.append(f"    {g.row(x)}  (call at line {', '.join(str(c[3]) for c in cs[:4])}{', BY NAME' if any(c[2] == 'name' for c in cs) else ''})")
+        ls = sorted({ln for c in cs for ln in _call_lines(c)})
+        out.append(f"    {g.row(x)}  (call at line {', '.join(str(ln) for ln in ls)}{', BY NAME' if any(c[2] == 'name' for c in cs) else ''})")
     if len(direct) > 25:
         out.append(f"    … {len(direct) - 25} more")
     order, truncated = g.walk_dir(i, False, 3, limit=500)
@@ -548,12 +599,13 @@ def impact(g, fresh_text, target):
     if regs:
         out.append(f"- It registers {len(regs)} event listener(s): " + "; ".join(g.row(e) for e in regs[:8]))
     if not direct and not n_ev:
-        out.append("- No visible callers. It may be dead, or called dynamically / from outside — "
-                   "grep for its name before concluding.")
+        out.append("- " + _no_callers(g, i)[0].upper() + _no_callers(g, i)[1:])
     if by_name:
         out.append(f"- {len(by_name)} caller edge(s) were matched BY NAME only: verify them.")
-    out.append("Static analysis can't see dynamic calls (obj[k]()), callbacks handed to libraries, "
-               "or calls from HTML. After you edit, call code_map_scan so the map stays true.")
+    out.append("These lists are complete for every call the analysis resolves (by import, scope or this; "
+               "BY NAME is flagged), and follow `el.click()` / `dispatchEvent(new …Event(\"x\"))` when the "
+               "element is #id, document or window. Not seen: computed calls (obj[k]()), events fired on "
+               "other elements, and HTML attributes. After you edit, call code_map_scan so the map stays true.")
     return "\n".join(out)
 
 
@@ -585,8 +637,7 @@ def quality(g, fresh_text, file="", limit=30):
         if on == "file":
             return g.files[idx], {idx}
         cyc = g.cycles[idx] if idx < len(g.cycles) else []
-        return (f"{len(cyc)} files importing each other: " + ", ".join(g.files[x] for x in cyc[:6]) +
-                (" …" if len(cyc) > 6 else "") + " (code_impact on one of them shows its part)"), set(cyc)
+        return (f"{len(cyc)} files importing each other: {_cycle_files(g, cyc)}"), set(cyc)
 
     if not fidx:
         hs = q.get("hotspots") or []
@@ -617,3 +668,211 @@ def quality(g, fresh_text, file="", limit=30):
     if used:
         out += ["", "What the rules measure:"] + [f"  {(rules.get(r) or {}).get('title', r)}: {(rules.get(r) or {}).get('why', '')}" for r in used]
     return "\n".join(out)
+
+
+# ---------------------------------------------------------------------------------
+# el impacto de un DIFF (doc 40 §Etapa 9): «¿qué toca este cambio y qué hay que probar?»
+
+_HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+# Una ref de git que se le pasa a `git diff`: sin espacios y sin arrancar con «-» (que
+# git leería como una opción: `--output=…` escribiría un archivo).
+_REF = re.compile(r"^[A-Za-z0-9_./~^@{}:+-]{1,200}$")
+
+
+def parse_diff(text):
+    """Un diff unificado → {ruta: {"changed": {líneas nuevas}, "removed_at": {líneas},
+    "new": bool, "deleted": bool}}. Las líneas son del lado NUEVO (el código como está),
+    que es el que tiene el mapa si se escaneó después del cambio. Una línea borrada se
+    ubica donde estaba en el archivo nuevo: así cae en la función que la perdió."""
+    files, cur, new_line = {}, None, 0
+    old_path = None
+    for raw in (text or "").splitlines():
+        if raw.startswith("diff --git "):
+            cur, old_path = None, None
+            continue
+        if raw.startswith("--- "):
+            p = raw[4:].strip().split("\t")[0]
+            old_path = None if p == "/dev/null" else (p[2:] if p.startswith("a/") else p)
+            continue
+        if raw.startswith("+++ "):
+            p = raw[4:].strip().split("\t")[0]
+            deleted = p == "/dev/null"
+            path = old_path if deleted else (p[2:] if p.startswith("b/") else p)
+            if not path:
+                cur = None
+                continue
+            cur = files.setdefault(path, {"changed": set(), "removed_at": set(), "new": old_path is None, "deleted": deleted})
+            continue
+        m = _HUNK.match(raw)
+        if m and cur is not None:
+            new_line = int(m.group(1))
+            # «+N,0» = un hunk que solo borra, DESPUÉS de la línea N: lo borrado se ubica en
+            # la que sigue (N+1), igual que un «-» en un diff con contexto. Al final de una
+            # función esa línea es su «}», así que cae adentro.
+            if m.group(2) == "0":
+                new_line += 1
+            continue
+        if cur is None or not raw:
+            continue
+        if raw[0] == "+":
+            cur["changed"].add(new_line)
+            new_line += 1
+        elif raw[0] == "-":
+            cur["removed_at"].add(new_line)
+        elif raw[0] == " ":
+            new_line += 1
+    return files
+
+
+def git_diff(folder, base, git_bin):
+    """`git diff <base>` de la carpeta del mapa (cambios sin commitear contra HEAD, por
+    defecto), con rutas relativas a ella, + los archivos nuevos que git todavía no sigue
+    (`git diff` no los muestra y son justamente lo que un agente acaba de crear)."""
+    base = (base or "HEAD").strip()
+    if not _REF.match(base) or base.startswith("-"):
+        raise CodeMapError(f"'{base}' is not a git ref (a branch, tag, commit or HEAD~N).")
+    if not git_bin:
+        raise CodeMapError("git is not installed (or not on a path DiagraMinder knows): pass the "
+                           "unified diff as `diff` instead.")
+    p = procs.run([git_bin, "diff", "--no-color", "--no-ext-diff", "--unified=0", "--relative", base, "--"],
+                  cwd=folder, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+    if p.returncode != 0:
+        msg = ((p.stderr or "").strip().splitlines() or ["git diff failed"])[-1][:300]
+        raise CodeMapError(f"git diff {base} failed in {folder}: {msg}. Pass the diff as `diff` instead.")
+    u = procs.run([git_bin, "ls-files", "--others", "--exclude-standard", "--", "."],
+                  cwd=folder, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+    untracked = [l.strip() for l in (u.stdout or "").splitlines() if l.strip()] if u.returncode == 0 else []
+    return p.stdout, untracked
+
+
+def _innermost(g, file_idx, line, spans):
+    """La función/método/evento más interno que contiene `line`, o None (código suelto
+    del módulo). `spans` = [(inicio, fin, idx)] de ese archivo."""
+    best = None
+    for a, b, i in spans:
+        if a <= line <= b and (best is None or a >= best[0]):
+            best = (a, b, i)
+    return best[2] if best else None
+
+
+def diff_impact(g, fresh_text, diff_text, untracked=(), limit=40):
+    """code_diff_impact: cada línea cambiada → la función que la contiene; de cada una,
+    quién la llama y qué ACCIONES del usuario llegan a ella. La unión de esas acciones es
+    lo que hay que probar después del cambio."""
+    parsed = parse_diff(diff_text)
+    for p in untracked or ():
+        parsed.setdefault(p, {"changed": set(), "removed_at": set(), "new": True, "deleted": False})
+    if not parsed:
+        raise CodeMapError("the diff is empty: nothing changed (or `diff` was not a unified diff).")
+    out = [_header(g, fresh_text), ""]
+    if "STALE" in fresh_text:
+        out += ["⚠ The map is older than the code: line numbers in the diff may not match it, and "
+                "functions added since the scan are missing. Call code_map_scan first, then this "
+                "again.", ""]
+    not_js, not_in_map, deleted = [], [], []
+    touched = {}            # fn idx → {"lines": set, "whole": bool}
+    module_files = set()    # archivos con cambios en código suelto del módulo
+    for path, d in sorted(parsed.items()):
+        if not _JS.search(path) or _MIN.search(path):
+            not_js.append(path)
+            continue
+        fidx = g.match_files(path)
+        if len(fidx) != 1:
+            (deleted if d["deleted"] else not_in_map).append(path + (" (matches several files)" if len(fidx) > 1 else ""))
+            continue
+        fi = fidx[0]
+        if d["deleted"]:
+            deleted.append(g.files[fi])
+            continue
+        spans = [(f["line"], f["line"] + (g.lens[i] if i < len(g.lens) else 1) - 1, i)
+                 for i, f in enumerate(g.fns) if f["file"] == fi and f["kind"] in ("function", "method", "event")]
+        if d["new"] and not d["changed"]:
+            # nuevo y sin diff de líneas (untracked): el archivo entero es nuevo
+            for _, _, i in spans:
+                touched.setdefault(i, {"lines": set(), "whole": True})
+            module_files.add(fi)
+            continue
+        for ln in sorted(d["changed"] | d["removed_at"]):
+            i = _innermost(g, fi, ln, spans)
+            if i is None:
+                module_files.add(fi)
+            else:
+                touched.setdefault(i, {"lines": set(), "whole": False})["lines"].add(ln)
+
+    if not touched and not module_files:
+        out.append("No changed line falls in JavaScript code of this map.")
+    actions = {}            # evento → funciones cambiadas que lo alcanzan
+    rows = sorted(touched, key=lambda i: (g.files[g.fns[i]["file"]], g.fns[i]["line"]))
+    if rows:
+        out.append(f"Changed functions and listeners: {len(rows)}")
+    for n, i in enumerate(rows):
+        f = g.fns[i]
+        t = touched[i]
+        if f["kind"] == "event":
+            actions.setdefault(i, set()).add(i)
+        else:
+            for e in _entry_points(g, i, 8, 2000)[0]:
+                actions.setdefault(e, set()).add(i)
+        if n >= limit:
+            continue
+        what = "new" if t["whole"] else "lines " + _ranges(t["lines"])
+        callers = sorted({c[0] for c in g.inc[i] if c[0] != i})
+        bits = []
+        if f["kind"] == "event":
+            bits.append("an event listener: the browser fires it" + _registered(g, i))
+        else:
+            bits.append(f"{len(callers)} direct caller(s)" + (": " + ", ".join(g.row(x) for x in callers[:5]) +
+                                                            (f" (+{len(callers) - 5})" if len(callers) > 5 else "") if callers else ""))
+            if i in g.exported:
+                bits.append("EXPORTED (code outside the map may call it)")
+            if any(c[2] == "name" for c in g.inc[i]):
+                bits.append("some callers matched BY NAME")
+        out.append(f"  {g.row(i)}  [{what}] — " + "; ".join(bits))
+    if len(rows) > limit:
+        out.append(f"  … {len(rows) - limit} more changed functions (raise `limit`).")
+    if module_files:
+        out.append("")
+        out.append("Changed module-level code (runs when the file loads), in: " + ", ".join(g.files[x] for x in sorted(module_files)))
+        for fi in sorted(module_files):
+            imp = sorted({e[0] for e in g.imports if e[1] == fi})
+            if imp:
+                out.append(f"  {g.files[fi]} is imported by {len(imp)}: " + ", ".join(g.files[x] for x in imp[:20]) +
+                           (f" … (+{len(imp) - 20})" if len(imp) > 20 else ""))
+    out.append("")
+    if actions:
+        out.append(f"User actions that reach the changed code — what to test: {len(actions)}")
+        for e in sorted(actions, key=lambda e: (g.files[g.fns[e]["file"]], g.fns[e]["line"]))[:max(limit, 40)]:
+            via = sorted(actions[e] - {e})
+            out.append(f"  {g.row(e)}{_registered(g, e)}" +
+                       (f"  via {', '.join(g.label(x) for x in via[:3])}{' …' if len(via) > 3 else ''}" if via else "  (changed itself)"))
+        if len(actions) > max(limit, 40):
+            out.append(f"  … {len(actions) - max(limit, 40)} more")
+    elif rows:
+        out.append("No event listener reaches the changed code statically (it may run at load, be "
+                   "exported for outside callers, or be reached dynamically).")
+    for label, lst in (("Deleted files (their callers are not in this map any more)", deleted),
+                       ("JavaScript files NOT in the map (new since the scan? call code_map_scan)", not_in_map),
+                       ("Other changed files (not JavaScript: not analyzed)", not_js)):
+        if lst:
+            out.append(f"{label}: " + ", ".join(lst[:30]) + (f" … (+{len(lst) - 30})" if len(lst) > 30 else ""))
+    out.append("Static analysis: `el.click()` and dispatched events are followed only on #id, document or "
+               "window; computed calls (obj[k]()) and HTML attributes are not followed — a user action "
+               "reached only that way is not in the list.")
+    return "\n".join(out)
+
+
+def _ranges(lines):
+    """{3,4,5,9} → «3-5, 9»."""
+    xs = sorted(lines)
+    out, start, prev = [], None, None
+    for x in xs:
+        if start is None:
+            start = prev = x
+        elif x == prev + 1:
+            prev = x
+        else:
+            out.append(f"{start}-{prev}" if prev != start else str(start))
+            start = prev = x
+    if start is not None:
+        out.append(f"{start}-{prev}" if prev != start else str(start))
+    return ", ".join(out[:8]) + (" …" if len(out) > 8 else "")
