@@ -293,7 +293,7 @@ const DOCS = [
   id: "mode-codemap", g: "modes",
   t: { en: "Code map: how your code is wired", es: "Mapa de código: cómo está conectado tu código" },
   b: {
-    en: `<p class="lead">Point it at the folder of a JavaScript project and it maps the code: which file imports which, which function calls which, and every event with the chain of functions it sets off — with the file and line of each one.</p>
+    en: `<p class="lead">Point it at the folder of a JavaScript or TypeScript project (JSX and TSX too) and it maps the code: which file imports which, which function calls which, and every event with the chain of functions it sets off — with the file and line of each one.</p>
 <h2>From the whole to one function</h2>
 <ul>
   <li><b>Overview</b>: every folder as a card with its files; the folders that use others come first. Hover a file and its imports show up: what it imports in blue, who imports it in green. If there is an <b>import cycle</b>, its chip opens a view of only the files that cause it: each loop as a row you read left to right, every arrow saying what is imported, and where to cut first.</li>
@@ -308,10 +308,10 @@ const DOCS = [
 <p>The <b>Quality</b> tab lists findings, not a grade: complex functions (cyclomatic complexity), long ones, ones with many parameters, ones that call too many others or are used from many files, big files, files with many responsibilities or imports, and import cycles. Each says what it measures and from what threshold, and picking one lights it up on the full map. On top, the <b>hotspots</b>: the files that pile up the most findings, with where their score comes from (3 per serious finding, 1 per warning). A function's card also shows its lines, parameters and complexity.</p>
 <h2>Keep a chain</h2>
 <p><b>Send to canvas</b> turns the chain you are looking at into a normal Canvas — one sector per file — so you can annotate it and keep it as project memory.</p>
-<div class="note">The files are read <b>in your browser</b>: your code never leaves the computer. node_modules, dist, vendor and minified files are skipped. JavaScript only for now.</div>
+<div class="note">The files are read <b>in your browser</b>: your code never leaves the computer. node_modules, dist, vendor, minified files and <code>.d.ts</code> are skipped.</div>
 <h2>Your agent reads it too</h2>
 <p>Through the <a href="#mcp">MCP</a>, your coding agent can scan a project and ask the map before touching the code: who calls this function, what depends on this file, which user actions end up running it. A map the agent made shows up here by itself, with the folder it came from, and <b>Rescan</b> reads that folder again without asking for it.</p>`,
-    es: `<p class="lead">Elegí la carpeta de un proyecto JavaScript y te arma el mapa del código: qué archivo importa a cuál, qué función llama a cuál, y cada evento con la cadena de funciones que dispara — con el archivo y la línea de cada una.</p>
+    es: `<p class="lead">Elegí la carpeta de un proyecto JavaScript o TypeScript (también JSX y TSX) y te arma el mapa del código: qué archivo importa a cuál, qué función llama a cuál, y cada evento con la cadena de funciones que dispara — con el archivo y la línea de cada una.</p>
 <h2>De lo general a una función</h2>
 <ul>
   <li><b>Vista general</b>: cada carpeta como una tarjeta con sus archivos; las carpetas que usan a otras van primero. Pasás por un archivo y aparecen sus imports: lo que importa en azul, quién lo importa en verde. Si hay un <b>ciclo de imports</b>, su chip abre una vista con solo los archivos que lo generan: cada círculo como una fila que se lee de izquierda a derecha, cada flecha diciendo qué se importa, y por dónde conviene cortar.</li>
@@ -326,7 +326,7 @@ const DOCS = [
 <p>La pestaña <b>Calidad</b> lista hallazgos, no una nota: funciones complejas (complejidad ciclomática), largas, con muchos parámetros, que llaman a demasiadas o que se usan desde muchos archivos, archivos grandes, con muchas responsabilidades o muchos imports, y ciclos de imports. Cada uno dice qué mide y desde qué umbral, y al elegirlo se enciende en el mapa completo. Arriba, los <b>puntos calientes</b>: los archivos que juntan más hallazgos, con de dónde sale su puntaje (3 por hallazgo serio, 1 por aviso). La ficha de una función muestra además sus líneas, parámetros y complejidad.</p>
 <h2>Guardar una cadena</h2>
 <p><b>Mandar al Canvas</b> convierte la cadena que estás mirando en un Canvas normal — un sector por archivo — para anotarla y guardarla como memoria del proyecto.</p>
-<div class="note">Los archivos se leen <b>en tu navegador</b>: tu código no sale de la computadora. Se saltean node_modules, dist, vendor y los minificados. Por ahora solo JavaScript.</div>
+<div class="note">Los archivos se leen <b>en tu navegador</b>: tu código no sale de la computadora. Se saltean node_modules, dist, vendor, los minificados y los <code>.d.ts</code>.</div>
 <h2>Tu agente también lo lee</h2>
 <p>Por el <a href="#mcp">MCP</a>, tu agente de código puede escanear un proyecto y preguntarle al mapa antes de tocar el código: quién llama a esta función, qué depende de este archivo, qué acciones del usuario terminan pasando por ahí. Un mapa que armó el agente aparece acá solo, con la carpeta de donde salió, y <b>Re-escanear</b> vuelve a leer esa carpeta sin pedírtela.</p>`,
   },
@@ -398,7 +398,7 @@ const DOCS = [
 <p>Before changing code, the agent can ask a <a href="#mode-codemap">Code map</a> instead of reading the whole repo. Every answer comes with file and line, and says whether the map is still current — if the code changed since the scan, it says which files.</p>
 <table>
   <tr><th>Tool</th><th>What it does</th></tr>
-  <tr><td><b>code_map_scan</b></td><td>Scans a JavaScript folder and saves its map (you see it appear). Scanning the same folder again refreshes it — the agent does it after editing. Needs the files level, and only inside your folder.</td></tr>
+  <tr><td><b>code_map_scan</b></td><td>Scans a JavaScript or TypeScript folder and saves its map (you see it appear). Scanning the same folder again refreshes it — the agent does it after editing. Needs the files level, and only inside your folder.</td></tr>
   <tr><td><b>code_map_overview</b></td><td>The shape of the code: folders, the most called functions, the most imported files, import cycles.</td></tr>
   <tr><td><b>code_find</b></td><td>Finds functions, methods, classes, events or files by name.</td></tr>
   <tr><td><b>code_who_calls</b> / <b>code_calls</b></td><td>Who calls a function, or what it calls, as many levels as asked.</td></tr>
@@ -458,7 +458,7 @@ const DOCS = [
 <p>Antes de cambiar código, el agente le puede preguntar a un <a href="#mode-codemap">Mapa de código</a> en vez de leer el repo entero. Cada respuesta trae archivo y línea, y dice si el mapa sigue al día — si el código cambió desde el escaneo, dice qué archivos.</p>
 <table>
   <tr><th>Herramienta</th><th>Qué hace</th></tr>
-  <tr><td><b>code_map_scan</b></td><td>Escanea una carpeta JavaScript y guarda su mapa (lo ves aparecer). Escanear la misma carpeta otra vez lo refresca — el agente lo hace después de editar. Necesita el nivel de archivos, y solo adentro de tu carpeta.</td></tr>
+  <tr><td><b>code_map_scan</b></td><td>Escanea una carpeta JavaScript o TypeScript y guarda su mapa (lo ves aparecer). Escanear la misma carpeta otra vez lo refresca — el agente lo hace después de editar. Necesita el nivel de archivos, y solo adentro de tu carpeta.</td></tr>
   <tr><td><b>code_map_overview</b></td><td>La forma del código: carpetas, las funciones más llamadas, los archivos más importados, los ciclos de imports.</td></tr>
   <tr><td><b>code_find</b></td><td>Encuentra funciones, métodos, clases, eventos o archivos por nombre.</td></tr>
   <tr><td><b>code_who_calls</b> / <b>code_calls</b></td><td>Quién llama a una función, o a qué llama, tantos niveles como se pida.</td></tr>
