@@ -21,7 +21,7 @@
   <!-- ?v= rompe el cache del borde cuando cambia el CSS. El nginx de infra/web ya
        manda no-cache, pero una copia vieja YA cacheada sobrevive hasta su TTL: subir
        este número la invalida al instante (index.html se sirve siempre fresco). -->
-  <link rel="stylesheet" href="app/bolzaDeEstilos/styles.css?v=106">
+  <link rel="stylesheet" href="app/bolzaDeEstilos/styles.css?v=107">
 </head>
 
 <body>
@@ -203,6 +203,7 @@
         <ul class="menu projects-list" id="folder-list"></ul>
         <div class="projects-col-foot">
           <button type="button" class="projects-foot-btn folder-add">＋ Add folder</button>
+          <button type="button" class="projects-foot-btn folder-import">Import folder</button>
           <button type="button" class="projects-foot-btn folder-reveal">Open root folder</button>
         </div>
       </section>
@@ -215,6 +216,7 @@
             <ul class="projects-add-menu hidden" id="file-add-types"></ul>
             <button type="button" class="projects-foot-btn projects-add-btn" id="file-add-btn">＋ Add file</button>
           </div>
+          <button type="button" class="projects-foot-btn file-import">Import file</button>
         </div>
       </section>
     </div>
@@ -1798,7 +1800,7 @@
   <!-- ?v= igual que en el CSS: mientras el zone setting "Browser Cache TTL" de
        Cloudflare pise el no-cache del origen, subir este número es lo único que
        invalida el bundle YA cacheado en los navegadores. -->
-  <script type="module" src="./dist/bundle.js?v=106"></script>
+  <script type="module" src="./dist/bundle.js?v=107"></script>
   <!-- el aviso de estadísticas: solo en diagraminder.com, y el beacon solo si se acepta -->
   <script src="/legal/consent.js?v=2" defer></script>
 </body>
