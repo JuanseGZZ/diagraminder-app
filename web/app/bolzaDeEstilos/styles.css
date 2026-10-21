@@ -10654,3 +10654,25 @@ body.dm-tour-open { overflow: hidden; }
 .cm-code-line.is-hl { background: var(--accent-dim); }
 .cm-code-line.is-hl .cm-code-no { color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
 @media (max-width: 640px) { .cm-code-overlay { padding: 8px; } .cm-code-panel { height: 92vh; } }
+/* «View code» coloreado (app/codemap/highlight.js). Paleta propia por tema: el código va
+   sobre --bg, y los tonos se eligieron para leerse sobre él en los dos (AA en el claro). */
+.cm-code-body {
+  --tk-kw: #c792ea; --tk-str: #9ccc7a; --tk-num: #f2a46b; --tk-com: #7f8796;
+  --tk-fn: #6cb2f5; --tk-type: #e8c47a; --tk-lit: #f2a46b; --tk-deco: #5fc8d6;
+  --tk-tag: #ef7f88; --tk-attr: #e8c47a;
+}
+[data-theme="light"] .cm-code-body {
+  --tk-kw: #8a3fb3; --tk-str: #2f7a32; --tk-num: #a3540f; --tk-com: #6e7684;
+  --tk-fn: #2457b8; --tk-type: #8a6200; --tk-lit: #a3540f; --tk-deco: #0b7285;
+  --tk-tag: #b3263a; --tk-attr: #8a6200;
+}
+.cm-code-text .tk-kw   { color: var(--tk-kw); }
+.cm-code-text .tk-str  { color: var(--tk-str); }
+.cm-code-text .tk-num  { color: var(--tk-num); }
+.cm-code-text .tk-com  { color: var(--tk-com); font-style: italic; }
+.cm-code-text .tk-fn   { color: var(--tk-fn); }
+.cm-code-text .tk-type { color: var(--tk-type); }
+.cm-code-text .tk-lit  { color: var(--tk-lit); }
+.cm-code-text .tk-deco { color: var(--tk-deco); }
+.cm-code-text .tk-tag  { color: var(--tk-tag); }
+.cm-code-text .tk-attr { color: var(--tk-attr); }
